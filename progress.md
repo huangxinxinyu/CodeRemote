@@ -9,6 +9,7 @@
 - 真实 Yuniverse 创建探针首次暴露 tmux session target 差异：session 已启动但 `set-option -t =session-id` 失败并返回 HTTP 500。补充 fake runner 回归后改用有效 target，精确结束该次空白测试残留，再由修复后的 API 成功创建 `session-52477ab1b578`。Daemon 重启后仍恢复 Yuniverse cwd，旧 6 个 session 全部存活，Serve 健康检查通过，Yuniverse 原生 Codex 历史返回 11 条。
 - 在新 Yuniverse 空白终端真实触发 `/model`，Codex 0.155.1 成功显示 “Select Model and Effort” 原生列表；未确认模型变更，随后 Esc 并清空输入回到普通提示符。手机端按钮点击和布局仍留给真实 iPhone 最终验收。
 - 最终差异审阅发现架构目录树同时保留了未来 `internal/directories/` 与已实现 `internal/directory/`，已删除被取代的复数占位，避免文档给出两个目录服务位置。
+- 阶段 13 与 14 主提交 `52298c6`（`Add mobile workspace session controls`）已推送到 `origin/main`；路径切换和原生指令范围完成，剩余真机点击/布局确认继续归入既有 iPhone 验收。
 - 用户要求 Codex 黑色原生工作区支持上下滑动。已确认全屏 alternate screen 下仅设置 CSS overflow 不够；采用 tmux mouse + `WheelUpPane` copy mode，并将 TUI 区域单指垂直手势编码为原生鼠标滚轮事件。自动化回归通过，当前专用 tmux server 已开启；真机方向与退出 copy mode 待用户刷新验证。
 - 用户明确要求能选择过去对话并使用 Codex 自己的命名。已按官方 app-server 合同实现 `thread/list` cwd 过滤、历史区与 `codex resume <id>` 新终端恢复；线上真实接口返回 6 条，名称包括“确定下一步”“编写 mac 软件 README”“问候用户”。不解析 provider 文件、不建立聊天数据库。
 - 阶段 11 完成：composer `+` 只承载图片/文件上下文入口，底栏原“切换项目”已替换为直接“新对话”，project/path 合并为工作目录入口。

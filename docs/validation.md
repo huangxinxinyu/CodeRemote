@@ -1,6 +1,6 @@
 # 验证与开发顺序
 
-状态：Mac 端自动化测试通过；真实 iPhone 已通过 tailnet 单终端链路。Serve API 已真实创建第二个 Codex session，daemon 重启恢复列表与指定 session 的 WSS attach 探针通过；iPhone Safari 的多终端切换、断开恢复及 30 分钟长连接仍未完成。
+状态：Mac 端自动化测试通过；真实 iPhone 已通过 tailnet 单终端链路。Serve API 已真实创建多终端；Yuniverse 路径创建、daemon 重启 cwd 恢复及 Codex `/model` 原生选择器已在 Mac 端实测。iPhone Safari 的目录/模型交互、多终端切换、断开恢复及 30 分钟长连接仍未完成。
 
 ## 先验证最不确定的组合
 
