@@ -6,9 +6,9 @@
 
 ## 当前状态
 
-产品方向已于 2026-09-20 确认为 Web + Tailscale。仓库已有可编译的 Go 占位入口，但 Web UI、HTTP/WebSocket 服务、终端桥接和 Tailscale 集成均尚未实现或端到端验证。
+产品方向已于 2026-09-20 确认为 Web + Tailscale。仓库已有可运行的单终端原型：Go daemon 内嵌移动端控制台与 xterm.js，通过同源 WebSocket、PTY 和专用 tmux server 操作一个 Codex 或 Claude 终端。真实 iPhone Safari 已通过直接 tailnet 和 Tailscale Serve 的基础连接与输入验证；中文输入、重连和长连接仍未完整验收，目录切换、多终端列表及持久化也尚未实现。
 
-建议技术基线是 Go 本地服务、浏览器终端组件、tmux 和 Tailscale；Mac 是首个电脑平台，iPhone Safari 是首个手机客户端。Tailscale Serve 的 WebSocket 兼容性必须通过原型验证，不能视为已跑通。
+技术基线是 Go 本地服务、浏览器终端组件、tmux 和 Tailscale；Mac 是首个电脑平台，iPhone Safari 是首个手机客户端。Tailscale Serve 的基础 WebSocket 已跑通，但兼容性与长连接稳定性仍须完成目标设备验收。
 
 ## 文档入口
 

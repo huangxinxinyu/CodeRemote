@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="theme-color" content="#07101b">
+    <title>Code Remote</title>
+    <link rel="stylesheet" href="/assets/xterm.css">
+    <link rel="stylesheet" href="/assets/app.css">
+  </head>
+  <body data-connection="connecting">
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">CR</span>
+          <span class="brand-copy">
+            <strong>Code Remote</strong>
+            <small>Private tailnet console</small>
+          </span>
+        </div>
+        <button id="connection-status" class="connection-chip" type="button" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="connection-label">正在连接</span>
+        </button>
+      </header>
+
+      <section id="project-context" class="context-bar" aria-label="当前会话上下文">
+        <button id="project-selector" class="context-control context-project" type="button" data-sheet="project">
+          <span class="context-icon" aria-hidden="true">▱</span>
+          <span class="context-copy">
+            <small>PROJECT</small>
+            <strong id="project-name">载入中</strong>
+          </span>
+          <span class="context-chevron" aria-hidden="true">⌄</span>
+        </button>
+        <span class="context-divider" aria-hidden="true"></span>
+        <button id="path-selector" class="context-control context-path" type="button" data-sheet="path">
+          <span class="context-copy">
+            <small>PATH</small>
+            <strong id="working-directory">正在读取工作目录</strong>
+          </span>
+          <span class="context-chevron" aria-hidden="true">›</span>
+        </button>
+        <span class="context-divider" aria-hidden="true"></span>
+        <button id="model-selector" class="context-control context-model" type="button" data-sheet="model">
+          <span class="context-copy">
+            <small>AGENT</small>
+            <strong id="agent-name">CODEX</strong>
+          </span>
+          <span class="context-chevron" aria-hidden="true">⌄</span>
+        </button>
+      </section>
+
+      <main id="conversation-shell" class="conversation-shell" aria-label="远程 coding agent 运行现场">
+        <div class="session-heading">
+          <span>
+            <small>ACTIVE SESSION</small>
+            <strong>远程运行现场</strong>
+          </span>
+          <button class="session-state" type="button" data-sheet="status" aria-label="查看会话连接详情">
+            <span class="session-state-dot" aria-hidden="true"></span>
+            <span id="session-state-label">ATTACHING</span>
+          </button>
+        </div>
+
+        <section id="sent-commands" class="sent-commands" aria-label="本页已发送的命令" hidden>
+          <div class="stream-label">YOU · SENT TO TERMINAL</div>
+          <ol id="sent-command-list"></ol>
+        </section>
+
+        <article class="terminal-card">
+          <header class="terminal-card-header">
+            <div class="agent-identity">
+              <span class="agent-avatar" aria-hidden="true">›_</span>
+              <span>
+                <strong id="terminal-agent-name">Codex</strong>
+                <small>原生 TUI · 真实输出</small>
+              </span>
+            </div>
+            <button id="terminal-detail" class="terminal-status" type="button" data-sheet="status">
+              <span class="terminal-led" aria-hidden="true"></span>
+              <span id="terminal-size">-- × --</span>
+            </button>
+          </header>
+          <div class="terminal-stage">
+            <main id="terminal" aria-label="远程终端；可直接操作 Codex 原生界面"></main>
+          </div>
+        </article>
+
+        <aside class="truth-note" aria-label="界面数据说明">
+          <span aria-hidden="true">i</span>
+          <p><strong>原生会话保持完整。</strong> Code Remote 只传输终端，不会根据输出文字猜测任务状态。</p>
+        </aside>
+      </main>
+
+      <section id="command-composer" class="command-composer" aria-label="输入下一条指令">
+        <div class="composer-heading">
+          <span><small>NEXT COMMAND</small><strong>告诉 Codex 下一步做什么</strong></span>
+          <span id="composer-connection">等待连接</span>
+        </div>
+        <div class="composer-field">
+          <button id="composer-action" class="composer-action" type="button" data-sheet="actions" aria-label="打开命令操作">+</button>
+          <textarea id="command-input" rows="1" maxlength="2000" placeholder="输入你的指令..." aria-label="给 Codex 的指令"></textarea>
+          <button id="send-command" class="send-command" type="button" disabled data-state="disabled">
+            <span class="send-icon" aria-hidden="true">↑</span>
+            <span id="send-label">运行</span>
+          </button>
+        </div>
+        <div class="composer-meta">
+          <span>⌘ Enter 发送 · 支持多行</span>
+          <span id="command-counter">0/2000</span>
+        </div>
+      </section>
+
+      <nav class="action-bar" aria-label="主要操作">
+        <button id="terminal-action" class="action-item is-active" type="button">
+          <span aria-hidden="true">›_</span><small>终端</small>
+        </button>
+        <button type="button" data-sheet="project">
+          <span aria-hidden="true">▱</span><small>切换项目</small>
+        </button>
+        <button type="button" data-sheet="path">
+          <span aria-hidden="true">↔</span><small>切换路径</small>
+        </button>
+        <button type="button" data-sheet="settings">
+          <span aria-hidden="true">⚙</span><small>设置</small>
+        </button>
+      </nav>
+    </div>
+
+    <div id="context-sheet" class="sheet-layer" hidden>
+      <button id="sheet-backdrop" class="sheet-backdrop" type="button" aria-label="关闭面板"></button>
+      <section class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+        <div class="sheet-handle" aria-hidden="true"></div>
+        <header>
+          <span><small id="sheet-eyebrow">SESSION CONTEXT</small><strong id="sheet-title">当前上下文</strong></span>
+          <button id="sheet-close" type="button" aria-label="关闭面板">×</button>
+        </header>
+
+        <div class="sheet-view" data-sheet-view="project" hidden>
+          <div class="sheet-current"><small>当前项目</small><strong data-current-project>—</strong><code data-current-path>—</code></div>
+          <p>这里的 Project 是工作目录入口，不会创建项目实体。目录列表与切换 API 尚未接入当前单终端原型。</p>
+          <button class="sheet-disabled-action" type="button" disabled>项目切换即将接入</button>
+        </div>
+        <div class="sheet-view" data-sheet-view="path" hidden>
+          <div class="sheet-current"><small>当前工作目录</small><code data-current-path>—</code></div>
+          <p>切换路径会启动或进入另一个终端，不能在运行中悄悄更改当前 Codex 的 cwd。目录浏览 API 尚未接入。</p>
+          <button class="sheet-disabled-action" type="button" disabled>路径浏览即将接入</button>
+        </div>
+        <div class="sheet-view" data-sheet-view="model" hidden>
+          <div class="sheet-current"><small>当前 Agent</small><strong data-current-agent>—</strong><code>MODEL · NATIVE SESSION</code></div>
+          <p>模型与 reasoning level 由 Codex 原生会话管理。Code Remote 当前不读取 provider 会话文件，也不会伪造模型状态。</p>
+          <button class="sheet-disabled-action" type="button" disabled>模型切换尚未接入</button>
+        </div>
+        <div class="sheet-view" data-sheet-view="status" hidden>
+          <div class="status-grid">
+            <span><small>TAILNET</small><strong id="status-network">正在连接</strong></span>
+            <span><small>ATTACHMENT</small><strong id="status-attachment">等待中</strong></span>
+            <span><small>TERMINAL</small><strong id="status-terminal-size">-- × --</strong></span>
+            <span><small>SESSION</small><strong data-current-terminal>prototype</strong></span>
+          </div>
+          <p>“已连接”表示浏览器已附着终端，不代表 Codex 已完成任务。断开网页不会默认结束 Mac 上的 agent。</p>
+          <button id="reconnect" class="sheet-primary-action" type="button">重新连接</button>
+        </div>
+        <div class="sheet-view" data-sheet-view="actions" hidden>
+          <div class="sheet-action-list">
+            <button id="paste-command" type="button"><span>⌘V</span><strong>粘贴到指令框</strong></button>
+            <button id="focus-terminal" type="button"><span>›_</span><strong>直接操作原生终端</strong></button>
+          </div>
+        </div>
+        <div class="sheet-view" data-sheet-view="settings" hidden>
+          <div class="sheet-current"><small>连接方式</small><strong>Private tailnet</strong><code>同源 HTTP / WebSocket</code></div>
+          <p>此页面不启用公网 Funnel。连接身份与访问边界由当前 Tailscale tailnet 管理。</p>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>

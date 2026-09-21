@@ -1,6 +1,6 @@
 # 通信协议草案
 
-状态：Web + Tailscale v0 建议合同，尚未实现。字段、上限和错误码将在首个原型中固化为共享样例。
+状态：Web + Tailscale v0 合同；`prototype/attach` 的 attach/input/output/resize 已在单终端原型实现，其余 HTTP 资源、完整错误码与恢复流程尚未实现。
 
 ## 连接与信任
 
@@ -34,6 +34,7 @@ iPhone Safari 只通过 Tailscale tailnet 访问 Mac daemon。首版没有公网
 
 | 操作 | 建议接口 | 语义 |
 | --- | --- | --- |
+| 当前上下文 | `GET /api/v1/context` | 已实现；返回当前原型的 `agent_id`、`working_directory`、派生 `workspace_name`、`terminal_id` 与 `native session` 模型标记；只读 |
 | 查看/刷新 agent | `GET/POST /api/v1/agents` | 读取或重新发现本机 CLI |
 | 浏览目录 | `GET /api/v1/directories` | 返回指定路径的直接子目录；分页，不递归扫描 |
 | 终端列表 | `GET /api/v1/terminals` | 返回产品创建的终端及进程状态 |

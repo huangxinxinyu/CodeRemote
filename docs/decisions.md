@@ -15,13 +15,14 @@
 | 手机中断不停止任务，回来能恢复 | tmux 在 Mac 上保活，浏览器重新附着 |
 | 同目录可开多个独立终端 | 允许切换，不要求协调文件冲突 |
 | 账号业务暂缓 | 不设计统一模型服务或 provider 登录流程 |
+| 移动端控制台采用清晰的上下文、运行现场和独立 composer | 用户要求优先解决输入区域、project/path context、status 与 next action 的信息层级，同时保留现有远程终端能力 |
 
 ## 建议作为实现基线
 
 | 建议 | 理由 | 尚需验证 |
 | --- | --- | --- |
 | Go daemon 内嵌 Web UI | 单个本地进程便于自用安装和更新；不需要独立网页托管 | 静态资源构建方式、macOS 用户级启动 |
-| 浏览器终端组件 | 复用 ANSI/光标/尺寸处理 | iPhone Safari 中文输入、特殊键、滚动、粘贴和 TUI 重绘 |
+| xterm.js 6.0.0 + fit addon 0.11.0 | 复用 ANSI/光标/尺寸处理；发布文件可作为 ESM 随 Go 二进制内嵌，不依赖运行时 CDN | iPhone Safari 中文输入、特殊键、滚动、粘贴和 TUI 重绘 |
 | Tailscale tailnet | 免去自建 Relay、NAT 穿透与公网暴露 | 蜂窝网络、切网、长连接和 Mac 睡眠行为 |
 | 优先测试 Tailscale Serve | 可把 localhost 服务以私有 HTTPS URL 暴露并使用 ACL | Safari WebSocket 兼容性；失败时采用直接 tailnet HTTP/WS |
 | tmux 托管每个独立终端 | 复用断线保活、重新附着与屏幕状态 | PTY 桥接、刷新尺寸和关闭语义 |
@@ -44,6 +45,8 @@ Tailscale 是网络接入层，不是 Code Remote 的应用后端。它解决手
 
 agent 原生 session、tmux 托管终端、浏览器 WebSocket 附着是三种不同生命周期。原生 session 可恢复历史，不自动替代存活进程或终端屏幕恢复。
 
+新版 UI 中的状态仍只描述产品已知事实：WebSocket `connecting/attached/disconnected`、终端进程退出和终端尺寸。原生 TUI 是 Codex/Claude 输出的权威表示；页面不根据文字猜测 completed/running/waiting，也不建立结构化消息或工具调用协议。Project 继续只是 cwd 的显示入口；当前切换面板会明确标注对应 API 尚未接入。
+
 “后台一直跑”落实为 Mac 持续执行。iPhone 锁屏后连接可以断开，回到页面时重新附着；不依赖 Safari 在后台常驻。
 
 ## 资料依据与限制
@@ -62,7 +65,7 @@ agent 原生 session、tmux 托管终端、浏览器 WebSocket 附着是三种�
 
 ## 实现前需处理
 
-- 选定浏览器终端组件，并记录锁定版本。
+- xterm.js 已锁定原型版本；完成真实 iPhone Safari 交互探针后再决定是否保持该版本。
 - 在目标 Mac 与 iPhone 上验证直接 tailnet HTTP/WS 和 Tailscale Serve HTTPS/WSS，特别是 Safari 的 WebSocket 握手与长连接。
 - 确定 daemon 的监听边界，证明普通 LAN 与公网不能访问。
 - 验证路径解析后的 CLI 能在 daemon 环境中运行，特别是依赖 Node 的启动器。

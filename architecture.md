@@ -1,6 +1,6 @@
 # 项目架构
 
-状态：Web + Tailscale 首版设计基线，尚未实现或端到端验证。更新于 2026-09-20。
+状态：Web + Tailscale 首版设计基线；单终端原型与移动端控制台外壳已实现，真实 iPhone 已通过直接 tailnet 与 Serve 基础连接，完整交互及长连接仍待验收。更新于 2026-09-20。
 
 ## 产品约束
 
@@ -22,11 +22,11 @@ Tailscale 负责跨网络寻址、加密传输与 tailnet 访问控制；Web dae
 
 ## 建议技术基线
 
-以下均是待验证的工程建议，不是已实现能力。
+以下是当前工程基线；表中已落地部分仍需按验证计划完成真机与长连接验收。
 
 | 部分 | 建议 | 职责与理由 |
 | --- | --- | --- |
-| 手机客户端 | 响应式 Web UI + 浏览器终端组件 | Safari 直接使用；终端组件候选需通过 iPhone 输入与重绘验证 |
+| 手机客户端 | 响应式 Web UI + xterm.js 6.0.0 / fit addon 0.11.0 | Safari 直接使用；依赖随 Go 二进制内嵌，仍需通过 iPhone 输入与重绘验证 |
 | Mac 服务 | Go 单进程，内嵌 Web 静态资源 | 提供页面、JSON API、WebSocket、CLI 发现、目录访问和终端桥接 |
 | 私网接入 | Tailscale | 手机与 Mac 跨网可达，不自建公网 Relay、NAT 穿透或设备配对 |
 | 终端宿主 | tmux，产品使用专用 socket/server | 让 agent 生命周期独立于网页与网络连接，支持重新附着 |
@@ -46,7 +46,7 @@ Tailscale 负责跨网络寻址、加密传输与 tailnet 访问控制；Web dae
 
 ## 关键职责边界
 
-- Web UI：展示可用 agent、定位目录、启动或进入终端、传递输入和尺寸变化、显示连接状态。
+- Web UI：以独立上下文条展示当前工作目录与 agent，以原生 TUI 卡片呈现权威运行现场，通过独立 composer 或终端直接输入传递字节，并显示真实连接、附着和尺寸状态。当前 project/path/model 切换只有诚实的交互壳，不能冒充已完成的目录或 provider API。
 - Daemon：以当前 Mac 用户身份执行认证后的目录与终端请求；不复制 provider 凭据到浏览器或 Tailscale 服务端。
 - Tailscale：提供设备入网、加密连通、MagicDNS 与 ACL；不管理 agent、目录和终端。
 - tmux：保留运行中的 agent 和终端现场。页面关闭或网络断开只移除附着客户端，不销毁 agent。
@@ -70,13 +70,12 @@ Tailscale 负责跨网络寻址、加密传输与 tailnet 访问控制；Web dae
 目标结构随实现逐步落地：
 
 ```text
-cmd/daemon/               已创建占位入口；目标为 Mac Web daemon
+cmd/daemon/               可运行的单终端 Mac Web daemon 原型
 internal/protocol/        已创建旧版 JSON envelope；实现时按新协议调整
 internal/discovery/       后续：CLI 描述表和路径发现
 internal/directories/     后续：工作目录浏览
-internal/terminal/        后续：tmux、PTY、终端元数据和附着生命周期
-internal/web/             后续：HTTP API、WebSocket 与静态资源服务
-web/                      后续：响应式 UI 与浏览器终端
+internal/terminal/        已实现原型 tmux/PTY 创建、复用和单写附着替换
+internal/web/             已实现内嵌 xterm.js 页面与原型 WebSocket 桥接
 cmd/relay/                旧公网 Relay 占位入口，不属于当前首版
 docs/                     产品、决策、运行时、协议、验证和开发文档
 ```
@@ -88,3 +87,7 @@ docs/                     产品、决策、运行时、协议、验证和开发
 先在 Mac 上运行最小 Go Web 服务，用 iPhone Safari 经 Tailscale 打开浏览器终端并操作 tmux 中的一个真实 agent；同时验证直接访问与 Tailscale Serve 的 WebSocket 行为。通过后再补目录入口、多终端、状态持久化与恢复。
 
 当前最大未知是 iPhone Safari 终端交互以及 Tailscale Serve + WebSocket 的稳定性。具体退出条件见[验证计划](docs/validation.md)。
+
+当前页面通过 `GET /api/v1/context` 读取 daemon 配置的 agent、cwd、终端 ID 及由 cwd basename 派生的工作区显示名。该接口不读取 provider 会话文件；模型只标记为 native session。浏览器中 composer 的“已发送”记录仅存在于当前页面内，不持久化，也不构成产品聊天数据库。
+
+原型将 xterm.js 的 ESM 发布文件、样式与 MIT 许可证固定在仓库中并嵌入 Go 二进制，不从 CDN 加载；这样手机只需要访问 Mac 的私有服务，运行时不依赖公网或 Node。版本升级必须重新执行真机输入与重绘验收。

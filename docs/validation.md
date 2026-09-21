@@ -1,6 +1,6 @@
 # 验证与开发顺序
 
-状态：Web + Tailscale 运行时验证均未执行。当前没有可用 Web 产品。
+状态：Mac 端自动化测试通过；真实 iPhone 已通过 tailnet 直连页面并建立 WebSocket → PTY → tmux → Codex 链路。Tailscale Serve 的 HTTPS 页面与自动化 WSS attach 探针已通过，但 iPhone Safari 的 Serve 输入、断开恢复及 30 分钟长连接仍未完成。当前仍不是可交付 Web 产品。
 
 ## 先验证最不确定的组合
 

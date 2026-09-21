@@ -1,6 +1,6 @@
 # 电脑端运行时
 
-状态：Web + Tailscale 建议实现合同，尚未编写功能代码。产品边界见 [product.md](product.md)。
+状态：Web + Tailscale 运行合同；单终端 daemon、tmux 保活与浏览器附着原型已实现，目录入口、多终端与持久化恢复仍待实现。产品边界见 [product.md](product.md)。
 
 ## 本地进程与环境
 

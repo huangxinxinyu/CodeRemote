@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-阶段 8 进行中：Mac 已安装并登录 Tailscale，开始实现真实 iPhone Safari 最小终端原型。
+阶段 8 进行中：真实 iPhone 已跑通基础终端链路，正在完成移动端控制台 UI 与剩余真机验收。
 
 ## 阶段
 
@@ -54,10 +54,11 @@
 ### 8. 最小 iPhone Safari 终端原型
 - **Status:** in_progress
 - [x] Mac 安装并登录 Tailscale，开发前置检查通过。
-- [ ] 建立可回退的仓库基线并进入隔离开发工作区。
-- [ ] 选定并锁定浏览器终端组件，完成静态真机交互探针。
-- [ ] 用测试驱动方式实现 Go HTTP/WebSocket、PTY/tmux 与单个真实 agent 的最小链路。
-- [ ] 在 iPhone 蜂窝网络下分别验证直接 tailnet HTTP/WS 与 Tailscale Serve HTTPS/WSS。
+- [x] 建立可回退的仓库基线；用户明确选择在当前工作区直接开发，不创建 worktree。
+- [x] 选定并锁定浏览器终端组件，完成真实 iPhone 基础交互探针。
+- [ ] 完成移动端终端外壳视觉优化；桌面 headless 移动布局已复核，等待真实 iPhone 刷新验收。
+- [x] 用测试驱动方式实现 Go HTTP/WebSocket、PTY/tmux 与单个真实 agent 的最小链路。
+- [ ] 在 iPhone 蜂窝网络下分别验证直接 tailnet HTTP/WS 与 Tailscale Serve HTTPS/WSS；两条路径已基础连通，蜂窝/长连接矩阵待补。
 - [ ] 记录真实版本、30 分钟长连接结果与默认接入路径决策。
 
 ## 当前产品约束
@@ -70,12 +71,17 @@
 
 ## 已知待办
 
-- iPhone 是否与 Mac 同处目标 tailnet、蜂窝网络是否可达，仍需真机确认。
-- Web UI、终端桥接、目录浏览和恢复逻辑尚未实现。
-- 需要在真实 iPhone Safari 与蜂窝网络中完成首个端到端原型。
+- 新版控制台 UI 需要在真实 iPhone Safari 检查键盘弹起、多行 composer、面板和触控尺寸。
+- 目录浏览、多终端列表与持久化恢复尚未实现；当前 project/path/model 面板只提供明确标注的交互壳。
+- 需要完成蜂窝网络、中文输入、重连及至少 30 分钟长连接验收。
 
 ## 错误记录
 
+- Chrome headless 通过 Serve HTTPS 域名截图时得到 `ERR_CONNECTION_CLOSED`，而 curl HTTPS/WSS 探针及真实 iPhone 均正常；本地视觉检查改走 `127.0.0.1`，不据此修改 Serve 配置。
+- 静态检查发现 HTML `data-input` 中的 `\u001b` 不会被浏览器解码为 Esc，而会发送字面文本；先增加页面回归测试，再改为 JavaScript 显式键名映射。
+- WebSocket 桥接首次编译时误用了不存在的包级 `websocket.Write`；核对依赖源码后确认应先编码 JSON，再调用连接的 `Write` 方法。
+- 检查 npm 发布包时，包含临时文件删除的命令被安全策略拒绝；包下载尚未执行，后续改为保留系统临时目录并由系统回收。
+- 首次解析 `tailscale status --json` 时假定 `.Peer` 一定是数组，当前输出为 `null` 导致 jq 迭代失败；已停止推断手机在线状态，改为先检查实际 JSON 结构。
 - 递归删除命令被安全策略拒绝；改为逐文件删除，并只对已确认的空目录执行 `rmdir`。
 - `make build` 曾把单个 main package 输出到仓库根目录；通过先失败的回归测试定位后，构建目标改为 `BUILD_DIR`。
 - 早期验证包装器曾误判 make 的退出码，并遇到 zsh glob 解析差异；后续改为直接验证脚本及使用 bash 运行链接检查。
