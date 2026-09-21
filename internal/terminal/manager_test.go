@@ -50,7 +50,9 @@ func TestEnsureCreatesMissingTmuxSession(t *testing.T) {
 
 	want := []recordedCommand{
 		{name: "/opt/homebrew/bin/tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "has-session", "-t", "=prototype"}},
-		{name: "/opt/homebrew/bin/tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "new-session", "-d", "-s", "prototype", "-x", "60", "-y", "30", "-c", "/tmp/project with spaces", "--", "/usr/local/bin/codex"}},
+		{name: "/opt/homebrew/bin/tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "new-session", "-d", "-s", "prototype", "-x", "60", "-y", "30", "-c", "/tmp/project with spaces", "--", "/usr/bin/env", "-u", "NO_COLOR", "/usr/local/bin/codex"}},
+		{name: "/opt/homebrew/bin/tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "set-option", "-g", "mouse", "on"}},
+		{name: "/opt/homebrew/bin/tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "bind-key", "-T", "root", "WheelUpPane", "copy-mode", "-e", "-u"}},
 	}
 	if !reflect.DeepEqual(runner.commands, want) {
 		t.Fatalf("commands = %#v, want %#v", runner.commands, want)
@@ -75,8 +77,22 @@ func TestEnsureReusesExistingTmuxSession(t *testing.T) {
 	if err := manager.Ensure(context.Background(), 60, 30); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.commands) != 1 {
-		t.Fatalf("Ensure ran %d commands, want only has-session", len(runner.commands))
+	if len(runner.commands) != 3 {
+		t.Fatalf("Ensure ran %d commands, want has-session plus touch scroll configuration", len(runner.commands))
+	}
+	wantMouse := recordedCommand{
+		name: "tmux",
+		args: []string{"-L", "code-remote", "-f", "/dev/null", "set-option", "-g", "mouse", "on"},
+	}
+	if !reflect.DeepEqual(runner.commands[1], wantMouse) {
+		t.Fatalf("mouse configuration = %#v, want %#v", runner.commands[1], wantMouse)
+	}
+	wantWheelUp := recordedCommand{
+		name: "tmux",
+		args: []string{"-L", "code-remote", "-f", "/dev/null", "bind-key", "-T", "root", "WheelUpPane", "copy-mode", "-e", "-u"},
+	}
+	if !reflect.DeepEqual(runner.commands[2], wantWheelUp) {
+		t.Fatalf("wheel-up configuration = %#v, want %#v", runner.commands[2], wantWheelUp)
 	}
 }
 

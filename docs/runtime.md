@@ -1,12 +1,14 @@
 # 电脑端运行时
 
-状态：Web + Tailscale 运行合同；单终端 daemon、tmux 保活与浏览器附着原型已实现，目录入口、多终端与持久化恢复仍待实现。产品边界见 [product.md](product.md)。
+状态：Web + Tailscale 运行合同；多终端、目录切换、tmux 保活/恢复与浏览器附着原型已实现，结束终端、创建幂等和电脑重启恢复仍待实现。产品边界见 [product.md](product.md)。
 
 ## 本地进程与环境
 
 Daemon 以 Mac 当前用户身份运行，提供 Web 页面、控制 API 与终端流，并管理自己创建的终端。首版不接管用户已在其他终端中打开的任意进程。
 
 Agent 沿用本机用户环境、配置与凭据。不能因为远程启动就替换 `HOME`、`CODEX_HOME`，或自动添加跳过权限确认的参数。provider 凭据不发送到浏览器或 Tailscale 控制面。
+
+为了让 Web 终端呈现 agent 原生 ANSI 样式，新建 agent 进程时只从继承环境中移除 `NO_COLOR`。这不修改用户 shell、配置文件或全局环境；已经运行的进程不会被热修改，需要在用户明确结束并新建终端后生效。
 
 “发现 CLI”只表示找到可执行入口，不表示已经登录、额度可用或所有运行依赖齐全。启动错误和 agent 原生认证提示照常展示，首版不自动登录或安装 provider。
 
@@ -42,7 +44,7 @@ Mac 进入睡眠、退出 Tailscale 或 daemon 停止后，手机无法访问；
 
 ## 工作目录
 
-网页请求目录列表或提交路径，daemon 验证它是存在且可访问的目录，返回规范路径及目录项。目录服务不需要项目记录、绑定 API、Git 仓库标识或克隆流程。
+网页请求目录列表或提交路径，daemon 展开当前用户的 `~`、解析绝对路径和符号链接，验证它是存在且可访问的目录，返回规范路径、父目录及最多 200 个直接子目录。目录服务不递归扫描，也不需要项目记录、绑定 API、Git 仓库标识或克隆流程。
 
 最近使用路径可作为浏览器本地偏好保存；这只是导航捷径。目录被删除或移动后显示不可用，不能悄悄创建新目录或切到其他位置。
 
@@ -54,13 +56,19 @@ Mac 进入睡眠、退出 Tailscale 或 daemon 停止后，手机无法访问；
 
 创建过程：
 
-1. 浏览器为一次创建意图生成固定 `terminal_id`，发送目录、`agent_id`、初始行列数。
-2. Daemon 验证请求、目录和 agent，记录创建意图，启动独立 tmux session，以所选目录作为 `cwd` 运行发现的 CLI。
+1. Daemon 为创建请求生成 `session-<12hex>` 的 `terminal_id`，使用请求中已验证的工作目录与 daemon 配置的 `agent_id`；请求不提交目录时回退到 daemon 默认 cwd。
+2. Daemon 启动独立 tmux session，以所选目录作为 `cwd` 运行发现的 CLI；总数有上限。
 3. 使用参数数组及工作目录参数，不能把路径或控制字段拼成 shell 命令。用户在终端中的输入只在创建成功后作为终端字节传入。
-4. 将终端标识、目录、agent、创建时间存入本地状态，并在 tmux 元数据上保留恢复标识。相同创建意图重试不得启动第二个 agent。
+4. 当前以产品专用 tmux socket、受限 session 名称和 `@code-remote-cwd` user option 恢复运行终端；旧 session 没有该元数据时回退到 daemon 默认 cwd。浏览器只在 localStorage 保存最近选择的 `terminal_id`，不保存正文。
 5. 浏览器附着后，daemon 创建 PTY 启动 tmux attach 客户端，把终端流桥接到当前 WebSocket。
 
+列出终端时可读取 tmux `#{pane_title}`。该字段由 pane 内应用通过标准终端标题控制序列维护；当它包含可用的 agent 原生会话名时作为展示标题返回，尚未命名时回退为“新对话”或本地编号。不得解析屏幕正文、读取 provider 会话文件或使用继承环境变量来推断标题。
+
 Daemon 不将 agent 绑定到某个 HTTP 请求或 WebSocket 的取消上下文。连接断开时可以结束 attach 客户端，但不得销毁 tmux session。
+
+Codex 历史列表通过本机 CLI 的官方 app-server `thread/list` 按浏览器当前终端 cwd 查询，只读取 `id/name/preview/time` 元数据。选择历史项时，Daemon 再次校验 cwd，并以参数数组在同一目录的新 tmux session 中运行 `codex resume <thread_id>`；它不解析 provider 会话文件，也不把历史复制进产品存储。
+
+Codex 模型和 slash command 继续由原生 TUI 处理。网页可向当前已附着终端发送 `/model`、`/status`、`/permissions`、`/review`，或只输入 `/` 打开原生命令菜单；不读取或覆盖 Codex 配置，不自动选择模型或权限，也不对其他 agent 声称支持。
 
 建议让退出后的 pane 保留到用户关闭终端，以便展示最终输出和退出码；agent 已退出时显示 `exited`，不能把仍存在的 tmux pane 当作 agent 正在运行。
 
@@ -74,7 +82,7 @@ Daemon 不将 agent 绑定到某个 HTTP 请求或 WebSocket 的取消上下文�
 | 锁屏、关闭页面、网络或 Tailscale 中断 | WebSocket 可以关闭，tmux 和 agent 保留 |
 | 重新打开网页 | 重新加载终端列表，附着原 `terminal_id`，恢复屏幕 |
 | Tailscale 重连 | 浏览器重新建立网络与 WebSocket；电脑进程不依赖手机连接存活 |
-| Daemon 重启 | 专用 tmux server 若仍存活，通过本地状态及 tmux 元数据重新发现终端，不重复创建 |
+| Daemon 重启 | 专用 tmux server 若仍存活，通过 `prototype` / `session-<12hex>` 名称重新发现终端，不重复创建 |
 | Agent 自己退出 | 保留可见退出结果，不自动重新发送任务 |
 | 用户明确结束终端 | 仅结束指定终端及其宿主任务；不能影响同目录其他终端 |
 | 电脑重启或 tmux 丢失 | 活跃终端无法直接复活；显示终端丢失，后续通过 agent 原生能力恢复历史，不承诺无损续跑 |
@@ -86,6 +94,8 @@ Daemon 恢复时以实际 tmux/进程状态核对本地元数据。启动中途�
 重连创建新的 `attachment_id`，重置浏览器终端解析状态，按当前视口尺寸重新附着，让 tmux 重绘当前画面。不能简单拼接历史纯文本来恢复带光标、颜色和交互菜单的 TUI。
 
 当前屏幕恢复是首版要求；滚动历史可使用 tmux 有界历史及浏览器终端能力，但不承诺永久保留全部输出。触摸滚动、复制、中文输入、多行粘贴和特殊键必须在 iPhone Safari 验证。
+
+专用 tmux server 开启 mouse，并将全屏 alternate-screen 下的 `WheelUpPane` 固定进入 copy mode。浏览器只在 TUI 区域把单指垂直手势编码为终端鼠标滚轮序列；这条路径查看 tmux 有界回滚，不改变 agent 输入协议或制造结构化消息。
 
 终端输出按字节传递，不按 WebSocket 分片强行解码 UTF-8；字符与控制序列可能跨分片。尺寸变化修改附着客户端 PTY 的行列数，再由 tmux 传递终端尺寸。
 

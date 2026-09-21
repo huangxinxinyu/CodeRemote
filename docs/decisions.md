@@ -16,6 +16,14 @@
 | 同目录可开多个独立终端 | 允许切换，不要求协调文件冲突 |
 | 账号业务暂缓 | 不设计统一模型服务或 provider 登录流程 |
 | 移动端控制台采用清晰的上下文、运行现场和独立 composer | 用户要求优先解决输入区域、project/path context、status 与 next action 的信息层级，同时保留现有远程终端能力 |
+| 不保留额外终端控制键条 | 用户确认手机键盘已经满足需要；界面把空间优先留给 agent 实时输出 |
+| 恢复 agent 原生 ANSI 样式 | 浏览器 xterm 支持颜色与字重；新 agent 进程不继承宿主启动环境中的 `NO_COLOR`，但不改用户配置或 provider 环境目录 |
+| 手机可以新建和切换对话 | “新对话”严格映射为新的 `terminal_id`、tmux session 和 agent 原生 session；旧终端继续运行，不增加产品聊天数据库 |
+| 会话列表优先显示 agent 原生标题 | 读取 agent 主动写入的 tmux pane title；不解析终端正文，不读取 provider 私有会话文件，空标题仍回退为本地编号 |
+| 手机能选择过去的 Codex 对话 | 通过官方 app-server `thread/list` 获取 Codex 原生名称和 ID，选择后以 `codex resume <id>` 启动新终端；不创建聊天数据库 |
+| Codex 工作区支持单指上下滑动 | 触摸手势映射为隔离 tmux server 的原生滚轮/copy-mode 回滚，不把 TUI 输出复制成普通文本列表 |
+| 手机可以切换工作目录 | 路径面板支持手输和逐层浏览；确认后在所选 cwd 新建独立终端，不能修改运行中终端的 cwd |
+| 模型切换优先复用 Codex 原生指令 | `/model` 打开 Codex 自己的模型与推理强度选择器；网页不维护账号相关模型清单 |
 
 ## 建议作为实现基线
 
@@ -43,9 +51,19 @@ Tailscale 是网络接入层，不是 Code Remote 的应用后端。它解决手
 
 多 provider 在首版仅指同一网页可打开不同 CLI，不表示共用账号、模型额度或对话上下文。多终端仅指独立并行进程，不保证同目录文件修改无冲突。
 
+当前多终端恢复以产品专用 tmux socket 为事实源：保留历史 `prototype`，新建项使用 `session-<12hex>`，并用 session user option 保存规范 cwd；浏览器 localStorage 只保存最近选择的 `terminal_id`。POST 创建由服务端生成 ID，当前尚无幂等键，不能把未知响应的盲目重试描述为安全。
+
 agent 原生 session、tmux 托管终端、浏览器 WebSocket 附着是三种不同生命周期。原生 session 可恢复历史，不自动替代存活进程或终端屏幕恢复。
 
-新版 UI 中的状态仍只描述产品已知事实：WebSocket `connecting/attached/disconnected`、终端进程退出和终端尺寸。原生 TUI 是 Codex/Claude 输出的权威表示；页面不根据文字猜测 completed/running/waiting，也不建立结构化消息或工具调用协议。Project 继续只是 cwd 的显示入口；当前切换面板会明确标注对应 API 尚未接入。
+新版 UI 中的状态仍只描述产品已知事实：WebSocket `connecting/attached/disconnected`、终端进程退出和终端尺寸。原生 TUI 是 Codex/Claude 输出的权威表示；页面不根据文字猜测 completed/running/waiting，也不建立结构化消息或工具调用协议。Project 继续只是 cwd 的显示名；路径切换只在所选目录创建新终端，不新增 Project 实体。
+
+对话名称与任务状态分开：终端列表可以展示 CLI 通过终端标题控制序列写入、由 tmux 暴露的 `pane_title`。当前 Codex 会在生成自动标题后更新该值；Code Remote 只把它作为可选显示名，不能由名称推断执行进度。不得使用子进程继承的 `CODEX_THREAD_ID` 绑定会话，因为 daemon 从 Codex 内启动时该变量可能属于父会话。
+
+Codex 历史选择是 provider-native integration，不是产品 Conversation 资源：daemon 为一次读取启动短生命周期本地 app-server，按当前 cwd 调用 `thread/list`；恢复前再次核对 ID，然后在独立 tmux session 中执行参数数组形式的 `codex resume <id>`。其他 provider 未接入同等官方接口时不伪造历史列表。
+
+Codex 模型切换和 slash command 同样是原生 TUI integration：页面可发送 `/model`、输入 `/` 打开原生命令菜单，并快捷触发 `/status`、`/permissions`、`/review`。具体模型列表、推理强度、权限选择和命令可用性由当前 Codex CLI 与账号决定；Claude 模式不启用这些 Codex 专用按钮。会修改工作区文件的 `/init` 不做一键快捷入口。
+
+Composer 发送成功后主动释放输入焦点，让 iPhone 键盘收起并恢复终端高度；这只改变浏览器布局，不改变 agent 或 tmux 生命周期。
 
 “后台一直跑”落实为 Mac 持续执行。iPhone 锁屏后连接可以断开，回到页面时重新附着；不依赖 Safari 在后台常驻。
 
@@ -61,7 +79,7 @@ agent 原生 session、tmux 托管终端、浏览器 WebSocket 附着是三种�
 | [tmux 官方指南](https://github.com/tmux/tmux/wiki/Getting-Started) | 服务端托管终端，客户端可以脱离和重新附着 |
 | [Multica 发现代码](https://github.com/multica-ai/multica/blob/main/server/internal/daemon/agents_probe.go) | 显式路径、PATH 和 shell 回退可作为 CLI 发现参考 |
 
-这些资料只证明候选能力和已知风险，不代表本项目已经集成。当前没有 Web UI、Tailscale 联调、真实 iPhone Safari 终端测试或部署服务。
+这些资料只证明候选能力和已知风险。当前已完成 Web UI、Tailscale 基础联调、真实 iPhone Safari 单终端链路和自动化双终端探针；蜂窝网络、长连接与完整真机多终端交互仍未验收。
 
 ## 实现前需处理
 

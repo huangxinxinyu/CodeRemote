@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/huangxinxinyu/CodeRemote/internal/buildinfo"
+	codexpkg "github.com/huangxinxinyu/CodeRemote/internal/codex"
 	"github.com/huangxinxinyu/CodeRemote/internal/terminal"
 	webui "github.com/huangxinxinyu/CodeRemote/internal/web"
 )
@@ -47,12 +48,13 @@ func run(ctx context.Context, args []string) error {
 		return fmt.Errorf("find %s: %w", config.agent, err)
 	}
 
-	manager, err := terminal.NewManager(terminal.Config{
-		TmuxPath:    tmuxPath,
-		SocketName:  "code-remote",
-		SessionName: "prototype",
-		AgentPath:   agentPath,
-		WorkingDir:  config.workingDirectory,
+	catalog, err := terminal.NewCatalog(ctx, terminal.CatalogConfig{
+		TmuxPath:           tmuxPath,
+		SocketName:         "code-remote",
+		InitialSessionName: "prototype",
+		AgentID:            config.agent,
+		AgentPath:          agentPath,
+		WorkingDir:         config.workingDirectory,
 	}, terminal.ExecRunner{})
 	if err != nil {
 		return err
@@ -64,12 +66,20 @@ func run(ctx context.Context, args []string) error {
 	}
 	defer listener.Close()
 
+	runtimeContext := webui.RuntimeContext{
+		AgentID:          config.agent,
+		WorkingDirectory: config.workingDirectory,
+		TerminalID:       "prototype",
+	}
+	handler := webui.NewHandlerWithSessions(catalog, runtimeContext)
+	if config.agent == "codex" {
+		handler = webui.NewHandlerWithSessionHistory(catalog, codexpkg.History{
+			CLIPath: agentPath, WorkingDir: config.workingDirectory,
+		}, runtimeContext)
+	}
+
 	server := &http.Server{
-		Handler: webui.NewHandlerWithContext(webui.NewAttachHandler(manager), webui.RuntimeContext{
-			AgentID:          config.agent,
-			WorkingDirectory: config.workingDirectory,
-			TerminalID:       "prototype",
-		}),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}

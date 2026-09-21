@@ -1,6 +1,6 @@
 # 项目架构
 
-状态：Web + Tailscale 首版设计基线；单终端原型与移动端控制台外壳已实现，真实 iPhone 已通过直接 tailnet 与 Serve 基础连接，完整交互及长连接仍待验收。更新于 2026-09-20。
+状态：Web + Tailscale 首版设计基线；移动端控制台、多个独立终端与 tmux 恢复原型已实现，真实 iPhone 已通过直接 tailnet 与 Serve 基础连接，完整交互及长连接仍待验收。更新于 2026-09-20。
 
 ## 产品约束
 
@@ -31,7 +31,7 @@ Tailscale 负责跨网络寻址、加密传输与 tailnet 访问控制；Web dae
 | 私网接入 | Tailscale | 手机与 Mac 跨网可达，不自建公网 Relay、NAT 穿透或设备配对 |
 | 终端宿主 | tmux，产品使用专用 socket/server | 让 agent 生命周期独立于网页与网络连接，支持重新附着 |
 | 传输 | HTTP + WebSocket；目标为 tailnet 内 HTTPS + WSS | 控制消息和终端原始字节使用版本化协议；具体 HTTPS 入口由原型验证决定 |
-| 数据 | Daemon 本地小型状态文件；浏览器本地偏好 | 只存目录捷径和终端元数据，不建立聊天数据库 |
+| 数据 | 专用 tmux session 名称；浏览器本地偏好 | tmux 是当前运行终端的恢复事实源；浏览器只记住当前 `terminal_id`，不建立聊天数据库 |
 
 ## Tailscale 接入边界
 
@@ -46,11 +46,13 @@ Tailscale 负责跨网络寻址、加密传输与 tailnet 访问控制；Web dae
 
 ## 关键职责边界
 
-- Web UI：以独立上下文条展示当前工作目录与 agent，以原生 TUI 卡片呈现权威运行现场，通过独立 composer 或终端直接输入传递字节，并显示真实连接、附着和尺寸状态。当前 project/path/model 切换只有诚实的交互壳，不能冒充已完成的目录或 provider API。
+- Web UI：以独立上下文条展示当前工作目录与 agent，以原生 TUI 卡片呈现权威运行现场，通过独立 composer 或终端直接输入传递字节；可浏览路径，并在所选 cwd 新建和切换独立终端。Codex 模式额外列出当前 cwd 的原生历史名称、恢复到新终端，并可触发 `/model`、原生 `/` 菜单及少量明确快捷指令。
 - Daemon：以当前 Mac 用户身份执行认证后的目录与终端请求；不复制 provider 凭据到浏览器或 Tailscale 服务端。
 - Tailscale：提供设备入网、加密连通、MagicDNS 与 ACL；不管理 agent、目录和终端。
 - tmux：保留运行中的 agent 和终端现场。页面关闭或网络断开只移除附着客户端，不销毁 agent。
 - Agent：模型调用、工具执行、权限确认、原生会话恢复。产品不解析 TUI 来生成任务状态，也不实现跨 provider 会话互转。
+
+浏览器终端按 ANSI/SGR 渲染 agent 原生样式，包括 256 色、粗体、暗色、下划线和反色；终端协议不携带任意字体族或富文本组件。Daemon 启动新 agent 时保留用户环境，但只移除与彩色终端目标直接冲突的 `NO_COLOR`，不改写 `HOME`、`CODEX_HOME` 或权限参数。
 
 终端输出可能包含代码和凭据。Daemon 不记录输入输出正文；Tailscale 控制面不等于应用服务器，不应把 tailnet 身份 token 或 provider 凭据写入仓库。详见[通信协议](docs/protocol.md)。
 
@@ -70,12 +72,13 @@ Tailscale 负责跨网络寻址、加密传输与 tailnet 访问控制；Web dae
 目标结构随实现逐步落地：
 
 ```text
-cmd/daemon/               可运行的单终端 Mac Web daemon 原型
+cmd/daemon/               可运行的多终端 Mac Web daemon 原型
 internal/protocol/        已创建旧版 JSON envelope；实现时按新协议调整
 internal/discovery/       后续：CLI 描述表和路径发现
-internal/directories/     后续：工作目录浏览
-internal/terminal/        已实现原型 tmux/PTY 创建、复用和单写附着替换
-internal/web/             已实现内嵌 xterm.js 页面与原型 WebSocket 桥接
+internal/terminal/        已实现 tmux session catalog、恢复、PTY 附着和每终端单写附着替换
+internal/codex/           通过官方 app-server thread/list 读取 Codex 原生历史元数据
+internal/directory/       工作目录规范化与有界的直接子目录浏览
+internal/web/             已实现内嵌 xterm.js、终端 list/create API 与动态 WebSocket 桥接
 cmd/relay/                旧公网 Relay 占位入口，不属于当前首版
 docs/                     产品、决策、运行时、协议、验证和开发文档
 ```
@@ -84,10 +87,10 @@ docs/                     产品、决策、运行时、协议、验证和开发
 
 ## 第一条实现链路
 
-先在 Mac 上运行最小 Go Web 服务，用 iPhone Safari 经 Tailscale 打开浏览器终端并操作 tmux 中的一个真实 agent；同时验证直接访问与 Tailscale Serve 的 WebSocket 行为。通过后再补目录入口、多终端、状态持久化与恢复。
+当前已从单终端链路推进到多个 cwd 的多终端：`prototype` 保留现有会话，新建终端使用 `session-<12hex>` tmux 名称；每个新 session 以 tmux user option 保存规范 cwd，daemon 重启后只恢复专用 socket 中这两个受控命名空间，不接管用户其他 tmux。旧 session 缺少 cwd 元数据时回退到 daemon 默认目录。
 
 当前最大未知是 iPhone Safari 终端交互以及 Tailscale Serve + WebSocket 的稳定性。具体退出条件见[验证计划](docs/validation.md)。
 
-当前页面通过 `GET /api/v1/context` 读取 daemon 配置的 agent、cwd、终端 ID 及由 cwd basename 派生的工作区显示名。该接口不读取 provider 会话文件；模型只标记为 native session。浏览器中 composer 的“已发送”记录仅存在于当前页面内，不持久化，也不构成产品聊天数据库。
+当前页面通过 `GET /api/v1/context` 读取默认上下文，并从终端列表切换到各自的 agent、cwd、终端 ID 及由 cwd basename 派生的工作区显示名。目录 API 只按需返回直接子目录；创建 API 验证提交路径后用 tmux `-c` 启动。终端列表还读取 tmux `pane_title` 作为可选的 agent 原生会话标题；它是 TUI 主动提供的终端元数据，不来自正文解析，也不表示任务状态。接口不读取 provider 会话文件；模型只标记为 native session，`/model` 选择仍完全发生在原生 TUI。浏览器中 composer 的“已发送”记录仅存在于当前页面内，不持久化，也不构成产品聊天数据库。
 
 原型将 xterm.js 的 ESM 发布文件、样式与 MIT 许可证固定在仓库中并嵌入 Go 二进制，不从 CDN 加载；这样手机只需要访问 Mac 的私有服务，运行时不依赖公网或 Node。版本升级必须重新执行真机输入与重绘验收。

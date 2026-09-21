@@ -10,15 +10,21 @@ iPhone Safari → Tailscale 私网 → Mac 上的 Code Remote → tmux → Codex
 
 ## 现在能做什么
 
-当前仓库提供的是可运行的单终端原型：
+当前仓库提供的是可运行的多终端原型：
 
 - 从 iPhone Safari 打开 Mac 上的私有 Web 页面。
 - 在指定目录启动 Codex 或 Claude Code，并显示其原生 TUI。
 - 从手机输入任务、查看输出和响应 agent 自己的确认提示。
+- 在手机上新建、列出和切换多个独立终端；列表优先显示 agent 原生会话标题，切走后其他 agent 继续运行。
+- 在手机上手输或逐层浏览工作目录，并在所选目录启动新的独立终端；当前终端不会被改 cwd 或结束。
+- Codex 模式下列出当前目录的已保存对话，显示 Codex 自己的名称与预览，并可用原生 `codex resume` 恢复到新的独立终端。
+- 从模型面板打开 Codex 原生 `/model` 选择器，也可打开原生 `/` 菜单或快捷触发 `/status`、`/permissions`、`/review`。
+- 在 iPhone 的原生 TUI 区域单指上下滑动，查看 tmux 保留的有限终端历史。
 - Safari 锁屏、关闭页面或临时断网后，Mac 上的 tmux 和 agent 不会因为网页断开而自动结束。
+- Go daemon 重启后从产品专用 tmux server 恢复终端列表。
 - 支持直接通过 Tailscale 地址访问，也可通过 Tailscale Serve 测试私有 HTTPS。
 
-目前还不能在网页里选择目录、创建或切换多个终端，也没有完整的 daemon 重启恢复。iPhone 中文输入、重连和长连接场景仍在继续验收，因此它还不是完成版产品。
+目前还不能在网页里切换 agent 或结束终端；创建请求幂等、电脑重启恢复也尚未实现。iPhone 中文输入、真机目录/模型切换、重连和长连接场景仍在继续验收，因此它还不是完成版产品。
 
 ## Codex 和 Claude 已经能远程使用，为什么还要做 Code Remote
 
@@ -154,7 +160,7 @@ Serve 只能作为 tailnet 内的私有入口，不要把 `serve` 换成 `funnel
   -cwd "/Users/your-name/Developer/my project"
 ```
 
-路径可以包含空格，但必须使用引号包住。当前网页还没有目录和 agent 选择器，修改它们需要停止 daemon 后用新的参数重新启动。
+路径可以包含空格，但必须使用引号包住。`-cwd` 是首次打开及旧 session 的默认目录；网页可在其他已存在目录新建终端。Agent 仍由 daemon 启动参数决定，切换 agent 需要停止 daemon 后用新的参数重新启动。
 
 ## 使用与停止
 

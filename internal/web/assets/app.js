@@ -19,6 +19,20 @@ const sentCommandList = document.querySelector("#sent-command-list");
 const sheet = document.querySelector("#context-sheet");
 const sheetTitle = document.querySelector("#sheet-title");
 const sheetEyebrow = document.querySelector("#sheet-eyebrow");
+const activeSessionName = document.querySelector("#active-session-name");
+const sessionList = document.querySelector("#session-list");
+const sessionCount = document.querySelector("#session-count");
+const historyList = document.querySelector("#history-list");
+const historyCount = document.querySelector("#history-count");
+const newSessionButton = document.querySelector("#new-session");
+const newSessionNav = document.querySelector("#new-session-nav");
+const pathForm = document.querySelector("#path-form");
+const pathInput = document.querySelector("#path-input");
+const pathError = document.querySelector("#path-error");
+const directoryList = document.querySelector("#directory-list");
+const switchPathButton = document.querySelector("#switch-path");
+const openModelPickerButton = document.querySelector("#open-model-picker");
+const openSlashMenuButton = document.querySelector("#open-slash-menu");
 
 const runtimeContext = {
   agent_id: "codex",
@@ -31,6 +45,8 @@ const runtimeContext = {
 const terminal = new Terminal({
   cursorBlink: true,
   fontFamily: "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontWeight: "400",
+  fontWeightBold: "700",
   fontSize: 12,
   lineHeight: 1.18,
   minimumContrastRatio: 5,
@@ -68,13 +84,20 @@ let attachmentID = "";
 let resizeTimer;
 let sending = false;
 let previousFocus;
+let activeTerminalID = runtimeContext.terminal_id;
+let connectedTerminalID = "";
+let connectionGeneration = 0;
+let terminalContexts = [];
+let historyThreads = [];
+let creatingSession = false;
+let resumingThreadID = "";
 
 const sheetLabels = {
-  project: ["SESSION CONTEXT", "切换项目"],
-  path: ["WORKING DIRECTORY", "切换路径"],
+  path: ["WORKING DIRECTORY", "切换项目 / 路径"],
   model: ["AGENT CONTEXT", "Agent 与模型"],
   status: ["LIVE STATUS", "连接与会话状态"],
-  actions: ["COMMAND ACTIONS", "指令操作"],
+  sessions: ["AGENT SESSIONS", "对话与终端"],
+  actions: ["ADD CONTEXT", "添加上下文"],
   settings: ["PRIVATE CONSOLE", "设置"],
 };
 
@@ -86,6 +109,37 @@ function compactPath(value) {
   return value.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
 }
 
+function rememberedTerminalID() {
+  try {
+    return localStorage.getItem("code-remote.active-terminal") || "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberTerminalID(terminalID) {
+  try {
+    localStorage.setItem("code-remote.active-terminal", terminalID);
+  } catch {
+    // Private browsing may reject storage; the live session still works.
+  }
+}
+
+function sessionDisplayName(context) {
+	const nativeTitle = context.title?.trim();
+	const workspaceName = context.workspace_name?.trim();
+	const workspaceSuffix = workspaceName ? ` | ${workspaceName}` : "";
+	if (nativeTitle && nativeTitle !== workspaceName) {
+		if (workspaceSuffix && nativeTitle.endsWith(workspaceSuffix)) {
+			return nativeTitle.slice(0, -workspaceSuffix.length).trim() || nativeTitle;
+		}
+		return nativeTitle;
+	}
+	if (context.terminal_id === "prototype") return "初始对话";
+	const index = terminalContexts.findIndex((item) => item.terminal_id === context.terminal_id);
+	return index >= 0 ? `对话 ${index + 1}` : "新对话";
+}
+
 function updateRuntimeContext() {
   const agentName = titleCase(runtimeContext.agent_id);
   const compactDirectory = compactPath(runtimeContext.working_directory || "目录不可用");
@@ -94,6 +148,7 @@ function updateRuntimeContext() {
   document.querySelector("#working-directory").title = runtimeContext.working_directory;
   document.querySelector("#agent-name").textContent = runtimeContext.agent_id.toUpperCase();
   document.querySelector("#terminal-agent-name").textContent = agentName;
+  activeSessionName.textContent = sessionDisplayName(runtimeContext);
   document.querySelectorAll("[data-current-project]").forEach((element) => {
     element.textContent = runtimeContext.workspace_name || "当前目录";
   });
@@ -107,6 +162,9 @@ function updateRuntimeContext() {
   document.querySelectorAll("[data-current-terminal]").forEach((element) => {
     element.textContent = runtimeContext.terminal_id || "prototype";
   });
+  document.querySelectorAll("[data-codex-command]").forEach((element) => {
+    element.disabled = runtimeContext.agent_id !== "codex";
+  });
 }
 
 async function loadRuntimeContext() {
@@ -114,9 +172,190 @@ async function loadRuntimeContext() {
     const response = await fetch("/api/v1/context", { headers: { Accept: "application/json" } });
     if (!response.ok) throw new Error(`context request returned ${response.status}`);
     Object.assign(runtimeContext, await response.json());
+    activeTerminalID = runtimeContext.terminal_id;
     updateRuntimeContext();
   } catch {
     document.querySelector("#working-directory").textContent = "上下文读取失败";
+  }
+}
+
+function renderSessionList() {
+  sessionList.replaceChildren();
+  sessionCount.textContent = String(terminalContexts.length);
+  if (terminalContexts.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "session-list-empty";
+    empty.textContent = "还没有可用对话";
+    sessionList.append(empty);
+    return;
+  }
+
+  terminalContexts.forEach((context) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "session-row";
+    button.setAttribute("role", "listitem");
+    if (context.terminal_id === activeTerminalID) button.classList.add("is-current");
+
+    const icon = document.createElement("span");
+    icon.className = "session-row-icon";
+    icon.textContent = ">_";
+
+    const copy = document.createElement("span");
+    copy.className = "session-row-copy";
+    const title = document.createElement("strong");
+    title.textContent = sessionDisplayName(context);
+    const detail = document.createElement("code");
+    detail.textContent = `${context.agent_id.toUpperCase()} · ${compactPath(context.working_directory)}`;
+    copy.append(title, detail);
+
+    const state = document.createElement("span");
+    state.className = "session-row-state";
+    state.textContent = context.terminal_id === activeTerminalID ? "CURRENT" : "打开";
+
+    button.append(icon, copy, state);
+    button.addEventListener("click", () => switchTerminal(context.terminal_id));
+    sessionList.append(button);
+  });
+}
+
+function renderHistoryList() {
+  historyList.replaceChildren();
+  historyCount.textContent = String(historyThreads.length);
+  if (historyThreads.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "session-list-empty";
+    empty.textContent = "当前目录没有已保存的 Codex 对话";
+    historyList.append(empty);
+    return;
+  }
+
+  historyThreads.forEach((thread) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "session-row history-row";
+    button.setAttribute("role", "listitem");
+    button.disabled = Boolean(resumingThreadID);
+
+    const icon = document.createElement("span");
+    icon.className = "session-row-icon";
+    icon.textContent = "↻";
+
+    const copy = document.createElement("span");
+    copy.className = "session-row-copy";
+    const title = document.createElement("strong");
+    title.textContent = thread.name?.trim() || thread.preview?.trim() || "未命名对话";
+    const detail = document.createElement("code");
+    const updated = thread.updated_at ? new Date(thread.updated_at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "时间未知";
+    detail.textContent = thread.preview?.trim() && thread.preview.trim() !== title.textContent ? `${thread.preview.trim()} · ${updated}` : updated;
+    copy.append(title, detail);
+
+    const state = document.createElement("span");
+    state.className = "session-row-state";
+    state.textContent = resumingThreadID === thread.id ? "恢复中" : "恢复";
+
+    button.append(icon, copy, state);
+    button.addEventListener("click", () => resumeHistoryThread(thread.id));
+    historyList.append(button);
+  });
+}
+
+async function loadHistory() {
+  historyList.replaceChildren();
+  const loading = document.createElement("p");
+  loading.className = "session-list-empty";
+  loading.textContent = "正在读取 Codex 历史…";
+  historyList.append(loading);
+  try {
+    const response = await fetch("/api/v1/codex/threads" + `?working_directory=${encodeURIComponent(runtimeContext.working_directory)}`, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`Codex history returned ${response.status}`);
+    const payload = await response.json();
+    historyThreads = Array.isArray(payload.threads) ? payload.threads : [];
+    renderHistoryList();
+  } catch {
+    historyCount.textContent = "—";
+    loading.textContent = "读取 Codex 历史失败，请稍后重试";
+  }
+}
+
+async function loadTerminals() {
+  try {
+    const response = await fetch("/api/v1/terminals", { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`terminal list returned ${response.status}`);
+    const payload = await response.json();
+    terminalContexts = Array.isArray(payload.terminals) ? payload.terminals : [];
+    const remembered = rememberedTerminalID();
+    const selected = terminalContexts.find((context) => context.terminal_id === remembered);
+    if (selected) {
+      activeTerminalID = selected.terminal_id;
+      Object.assign(runtimeContext, selected);
+    }
+    renderSessionList();
+    updateRuntimeContext();
+  } catch {
+    sessionList.replaceChildren();
+    const error = document.createElement("p");
+    error.className = "session-list-empty";
+    error.textContent = "读取对话失败，请稍后重试";
+    sessionList.append(error);
+  }
+}
+
+function showPathError(message = "") {
+  pathError.textContent = message;
+  pathError.hidden = !message;
+}
+
+function renderDirectoryListing(listing) {
+  pathInput.value = listing.path;
+  directoryList.replaceChildren();
+  const rows = [];
+  if (listing.parent && listing.parent !== listing.path) {
+    rows.push({ name: "..", path: listing.parent, detail: "上级目录" });
+  }
+  for (const entry of listing.directories || []) {
+    rows.push({ name: entry.name, path: entry.path, detail: "打开目录" });
+  }
+  if (rows.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "session-list-empty";
+    empty.textContent = "没有可浏览的子目录";
+    directoryList.append(empty);
+    return;
+  }
+  for (const row of rows) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "directory-row";
+    button.setAttribute("role", "listitem");
+    const copy = document.createElement("span");
+    const name = document.createElement("strong");
+    const detail = document.createElement("code");
+    name.textContent = row.name;
+    detail.textContent = compactPath(row.path);
+    copy.append(name, detail);
+    const action = document.createElement("small");
+    action.textContent = row.detail;
+    button.append(copy, action);
+    button.addEventListener("click", () => loadDirectory(row.path));
+    directoryList.append(button);
+  }
+}
+
+async function loadDirectory(path) {
+  showPathError();
+  directoryList.replaceChildren();
+  const loading = document.createElement("p");
+  loading.className = "session-list-empty";
+  loading.textContent = "正在读取目录…";
+  directoryList.append(loading);
+  try {
+    const response = await fetch(`/api/v1/directories?path=${encodeURIComponent(path)}`, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error(`directory browse returned ${response.status}`);
+    renderDirectoryListing(await response.json());
+  } catch {
+    directoryList.replaceChildren();
+    showPathError("目录不存在或当前用户无法访问");
   }
 }
 
@@ -167,6 +406,54 @@ function sendInput(data) {
   });
 }
 
+function tmuxMouseWheelSequence(direction, clientX, clientY) {
+  const bounds = terminalElement.getBoundingClientRect();
+  const relativeX = Math.max(0, Math.min(bounds.width - 1, clientX - bounds.left));
+  const relativeY = Math.max(0, Math.min(bounds.height - 1, clientY - bounds.top));
+  const column = Math.max(1, Math.min(terminal.cols, Math.floor((relativeX / bounds.width) * terminal.cols) + 1));
+  const row = Math.max(1, Math.min(terminal.rows, Math.floor((relativeY / bounds.height) * terminal.rows) + 1));
+  const button = direction < 0 ? 64 : 65;
+  return `\x1b[<${button};${column};${row}M`;
+}
+
+function installTerminalTouchScrolling() {
+  const gesture = { active: false, lastY: 0, remainder: 0 };
+  const pixelsPerStep = 22;
+
+  terminalElement.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) {
+      gesture.active = false;
+      return;
+    }
+    gesture.active = true;
+    gesture.lastY = event.touches[0].clientY;
+    gesture.remainder = 0;
+  }, { capture: true, passive: true });
+
+  terminalElement.addEventListener("touchmove", (event) => {
+    if (!gesture.active || event.touches.length !== 1 || !attachmentID) return;
+    const touch = event.touches[0];
+    gesture.remainder += gesture.lastY - touch.clientY;
+    gesture.lastY = touch.clientY;
+    const steps = Math.min(6, Math.floor(Math.abs(gesture.remainder) / pixelsPerStep));
+    if (steps === 0) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const direction = gesture.remainder > 0 ? 1 : -1;
+    const sequence = tmuxMouseWheelSequence(direction, touch.clientX, touch.clientY);
+    for (let index = 0; index < steps; index += 1) sendInput(sequence);
+    gesture.remainder -= direction * steps * pixelsPerStep;
+  }, { capture: true, passive: false });
+
+  const endGesture = () => {
+    gesture.active = false;
+    gesture.remainder = 0;
+  };
+  terminalElement.addEventListener("touchend", endGesture, { capture: true, passive: true });
+  terminalElement.addEventListener("touchcancel", endGesture, { capture: true, passive: true });
+}
+
 function fitAndResize() {
   try {
     fitAddon.fit();
@@ -185,19 +472,24 @@ function fitAndResize() {
   }
 }
 
-function connect() {
-  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+function connectToTerminal(terminalID = activeTerminalID, force = false) {
+  if (!force && connectedTerminalID === terminalID && socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+  const generation = ++connectionGeneration;
+  if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
   attachmentID = "";
+  connectedTerminalID = terminalID;
   setStatus("正在连接", "connecting");
   const scheme = location.protocol === "https:" ? "wss" : "ws";
-  socket = new WebSocket(`${scheme}://${location.host}/api/v1/terminals/prototype/attach`);
+  socket = new WebSocket(`${scheme}://${location.host}/api/v1/terminals/${encodeURIComponent(terminalID)}/attach`);
 
   socket.addEventListener("open", () => {
+    if (generation !== connectionGeneration) return;
     fitAddon.fit();
     send("terminal.attach", { cols: terminal.cols, rows: terminal.rows });
   });
 
   socket.addEventListener("message", (event) => {
+    if (generation !== connectionGeneration) return;
     let message;
     try {
       message = JSON.parse(event.data);
@@ -227,10 +519,13 @@ function connect() {
   });
 
   socket.addEventListener("close", () => {
+    if (generation !== connectionGeneration) return;
     attachmentID = "";
     setStatus("连接已断开", "disconnected");
   });
-  socket.addEventListener("error", () => setStatus("连接错误", "error"));
+  socket.addEventListener("error", () => {
+    if (generation === connectionGeneration) setStatus("连接错误", "error");
+  });
 }
 
 function resizeComposer() {
@@ -286,6 +581,18 @@ function submitCommand() {
   }, 360);
 }
 
+function sendNativeCommand(command, submit = true) {
+  if (runtimeContext.agent_id !== "codex" || !attachmentID) return;
+  if (!sendInput(`${command}${submit ? "\r" : ""}`)) {
+    setStatus("发送失败", "error");
+    return;
+  }
+  addSentCommand(command);
+  closeSheet();
+  document.querySelector(".terminal-card").scrollIntoView({ behavior: "smooth", block: "start" });
+  window.setTimeout(() => terminal.focus(), 120);
+}
+
 function openSheet(name) {
   const label = sheetLabels[name];
   if (!label) return;
@@ -297,6 +604,14 @@ function openSheet(name) {
   });
   sheet.hidden = false;
   document.querySelector("#sheet-close").focus();
+  if (name === "sessions") {
+    loadTerminals();
+    loadHistory();
+  }
+  if (name === "path") {
+    pathInput.value = runtimeContext.working_directory;
+    loadDirectory(runtimeContext.working_directory);
+  }
 }
 
 function closeSheet() {
@@ -320,7 +635,101 @@ async function pasteIntoComposer() {
   }
 }
 
+function switchTerminal(terminalID) {
+  const context = terminalContexts.find((item) => item.terminal_id === terminalID);
+  if (!context) return;
+  if (terminalID === activeTerminalID && attachmentID) {
+    closeSheet();
+    return;
+  }
+  activeTerminalID = terminalID;
+  rememberTerminalID(terminalID);
+  Object.assign(runtimeContext, context);
+  updateRuntimeContext();
+  renderSessionList();
+  sentCommandList.replaceChildren();
+  sentCommands.hidden = true;
+  terminal.reset();
+  closeSheet();
+  connectToTerminal(terminalID, true);
+}
+
+function setCreatingSession(value) {
+  creatingSession = value;
+  newSessionButton.disabled = value;
+  newSessionNav.disabled = value;
+  newSessionButton.lastChild.textContent = value ? " 创建中…" : " 新建对话";
+  newSessionNav.querySelector("small").textContent = value ? "创建中" : "新对话";
+  switchPathButton.disabled = value;
+  switchPathButton.textContent = value ? "正在创建…" : "在此目录新建对话";
+}
+
+async function createSession(workingDirectory = "") {
+  if (creatingSession) return;
+  setCreatingSession(true);
+  showPathError();
+  try {
+    const headers = { Accept: "application/json" };
+    const options = { method: "POST", headers };
+    if (workingDirectory) {
+      headers["Content-Type"] = "application/json";
+      options.body = JSON.stringify({ working_directory: workingDirectory });
+    }
+    const response = await fetch("/api/v1/terminals", {
+      ...options,
+    });
+    if (!response.ok) throw new Error(`terminal create returned ${response.status}`);
+    const created = await response.json();
+    terminalContexts.push(created);
+    renderSessionList();
+    switchTerminal(created.terminal_id);
+  } catch {
+    if (workingDirectory) {
+      showPathError("无法在此目录新建对话，请检查路径后重试");
+    } else {
+      openSheet("sessions");
+      const error = document.createElement("p");
+      error.className = "session-list-empty";
+      error.textContent = "新建对话失败，请稍后重试";
+      sessionList.prepend(error);
+    }
+  } finally {
+    setCreatingSession(false);
+  }
+}
+
+async function resumeHistoryThread(threadID) {
+  if (resumingThreadID) return;
+  resumingThreadID = threadID;
+  renderHistoryList();
+  try {
+    const response = await fetch(`/api/v1/codex/threads/${encodeURIComponent(threadID)}/resume`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ working_directory: runtimeContext.working_directory }),
+    });
+    if (!response.ok) throw new Error(`resume Codex thread returned ${response.status}`);
+    const created = await response.json();
+    terminalContexts.push(created);
+    renderSessionList();
+    switchTerminal(created.terminal_id);
+  } catch {
+    resumingThreadID = "";
+    renderHistoryList();
+    const error = document.createElement("p");
+    error.className = "session-list-empty";
+    error.textContent = "恢复历史对话失败，请稍后重试";
+    historyList.prepend(error);
+  } finally {
+    if (resumingThreadID === threadID) {
+      resumingThreadID = "";
+      renderHistoryList();
+    }
+  }
+}
+
 terminal.onData(sendInput);
+installTerminalTouchScrolling();
 new ResizeObserver(() => {
   clearTimeout(resizeTimer);
   resizeTimer = window.setTimeout(fitAndResize, 80);
@@ -345,20 +754,21 @@ document.querySelector("#sheet-close").addEventListener("click", closeSheet);
 document.querySelector("#sheet-backdrop").addEventListener("click", closeSheet);
 document.querySelector("#reconnect").addEventListener("click", () => {
   closeSheet();
-  if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
-  window.setTimeout(connect, 80);
+  connectToTerminal(activeTerminalID, true);
+});
+newSessionButton.addEventListener("click", () => createSession());
+newSessionNav.addEventListener("click", () => createSession());
+pathForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadDirectory(pathInput.value);
+});
+switchPathButton.addEventListener("click", () => createSession(pathInput.value));
+openModelPickerButton.addEventListener("click", () => sendNativeCommand("/model"));
+openSlashMenuButton.addEventListener("click", () => sendNativeCommand("/", false));
+document.querySelectorAll("[data-native-command]").forEach((button) => {
+  button.addEventListener("click", () => sendNativeCommand(button.dataset.nativeCommand));
 });
 document.querySelector("#paste-command").addEventListener("click", pasteIntoComposer);
-document.querySelector("#focus-terminal").addEventListener("click", () => {
-  closeSheet();
-  document.querySelector(".terminal-card").scrollIntoView({ behavior: "smooth", block: "start" });
-  window.setTimeout(() => terminal.focus(), 220);
-});
-document.querySelector("#terminal-action").addEventListener("click", () => {
-  document.querySelector(".terminal-card").scrollIntoView({ behavior: "smooth", block: "start" });
-  terminal.focus();
-});
-
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !sheet.hidden) {
     event.preventDefault();
@@ -380,8 +790,13 @@ commandInput.addEventListener("blur", () => {
   window.setTimeout(updateKeyboardLayout, 80);
 });
 
-updateRuntimeContext();
-updateComposerState();
-fitAndResize();
-loadRuntimeContext();
-connect();
+async function bootstrap() {
+  updateRuntimeContext();
+  updateComposerState();
+  fitAndResize();
+  await loadRuntimeContext();
+  await loadTerminals();
+  connectToTerminal(activeTerminalID);
+}
+
+bootstrap();

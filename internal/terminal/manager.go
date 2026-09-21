@@ -22,6 +22,7 @@ type Config struct {
 	SocketName  string
 	SessionName string
 	AgentPath   string
+	AgentArgs   []string
 	WorkingDir  string
 }
 
@@ -49,6 +50,11 @@ type ExecRunner struct{}
 
 func (ExecRunner) Run(ctx context.Context, name string, args ...string) error {
 	return exec.CommandContext(ctx, name, args...).Run()
+}
+
+// Output runs a tmux inspection command and returns its stdout.
+func (ExecRunner) Output(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return exec.CommandContext(ctx, name, args...).Output()
 }
 
 // Manager owns a tmux session but not any individual browser attachment.
@@ -85,20 +91,36 @@ func (manager *Manager) Ensure(ctx context.Context, cols, rows uint16) error {
 
 	base := manager.baseArgs()
 	target := "=" + manager.config.SessionName
-	if err := manager.runner.Run(ctx, manager.config.TmuxPath, append(base, "has-session", "-t", target)...); err == nil {
-		return nil
+	if err := manager.runner.Run(ctx, manager.config.TmuxPath, append(base, "has-session", "-t", target)...); err != nil {
+		args := append(base,
+			"new-session", "-d",
+			"-s", manager.config.SessionName,
+			"-x", strconv.Itoa(int(cols)),
+			"-y", strconv.Itoa(int(rows)),
+			"-c", manager.config.WorkingDir,
+			"--", "/usr/bin/env", "-u", "NO_COLOR", manager.config.AgentPath,
+		)
+		args = append(args, manager.config.AgentArgs...)
+		if err := manager.runner.Run(ctx, manager.config.TmuxPath, args...); err != nil {
+			return fmt.Errorf("create tmux session %q: %w", manager.config.SessionName, err)
+		}
 	}
 
-	args := append(base,
-		"new-session", "-d",
-		"-s", manager.config.SessionName,
-		"-x", strconv.Itoa(int(cols)),
-		"-y", strconv.Itoa(int(rows)),
-		"-c", manager.config.WorkingDir,
-		"--", manager.config.AgentPath,
+	// The iPhone has no physical mouse wheel. The Web client translates a
+	// vertical touch gesture into native wheel events so tmux can expose its
+	// own scrollback without turning terminal output into application data.
+	if err := manager.runner.Run(ctx, manager.config.TmuxPath, append(base, "set-option", "-g", "mouse", "on")...); err != nil {
+		return fmt.Errorf("enable tmux scrollback gestures: %w", err)
+	}
+	// tmux normally forwards wheel events to applications in the alternate
+	// screen. Codex uses that screen, so reserve wheel-up for tmux history and
+	// let copy mode handle subsequent up/down events natively.
+	wheelUp := append(base,
+		"bind-key", "-T", "root", "WheelUpPane",
+		"copy-mode", "-e", "-u",
 	)
-	if err := manager.runner.Run(ctx, manager.config.TmuxPath, args...); err != nil {
-		return fmt.Errorf("create tmux session %q: %w", manager.config.SessionName, err)
+	if err := manager.runner.Run(ctx, manager.config.TmuxPath, wheelUp...); err != nil {
+		return fmt.Errorf("configure tmux scrollback gesture: %w", err)
 	}
 	return nil
 }

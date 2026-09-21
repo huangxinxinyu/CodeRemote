@@ -1,6 +1,6 @@
 # 通信协议草案
 
-状态：Web + Tailscale v0 合同；`prototype/attach` 的 attach/input/output/resize 已在单终端原型实现，其余 HTTP 资源、完整错误码与恢复流程尚未实现。
+状态：Web + Tailscale v0 合同；多终端 attach/input/output/resize、目录浏览与按 cwd 创建、Codex 历史/恢复均已在原型实现，完整错误码、关闭与创建幂等仍待实现。
 
 ## 连接与信任
 
@@ -22,8 +22,8 @@ iPhone Safari 只通过 Tailscale tailnet 访问 Mac daemon。首版没有公网
 | 资源 | 必要信息 |
 | --- | --- |
 | Agent | `agent_id`、显示名、是否发现、可选版本、诊断状态 |
-| Directory | 规范路径、父目录、子目录项；只按需读取 |
-| Terminal | `terminal_id`、`agent_id`、启动 `cwd`、进程状态、创建时间 |
+| Directory | 已实现；规范路径、父目录、最多 200 个直接子目录项；只按需读取 |
+| Terminal | `terminal_id`、`agent_id`、启动 `cwd`、可选原生 `title`、进程状态、创建时间 |
 | Attachment | 临时 `attachment_id`、`terminal_id`、当前行列数 |
 
 直连 Mac 后不需要 Relay 路由用的 `host_id`。没有 Project、Task、ChatMessage 或跨 provider Conversation 资源。
@@ -36,13 +36,17 @@ iPhone Safari 只通过 Tailscale tailnet 访问 Mac daemon。首版没有公网
 | --- | --- | --- |
 | 当前上下文 | `GET /api/v1/context` | 已实现；返回当前原型的 `agent_id`、`working_directory`、派生 `workspace_name`、`terminal_id` 与 `native session` 模型标记；只读 |
 | 查看/刷新 agent | `GET/POST /api/v1/agents` | 读取或重新发现本机 CLI |
-| 浏览目录 | `GET /api/v1/directories` | 返回指定路径的直接子目录；分页，不递归扫描 |
-| 终端列表 | `GET /api/v1/terminals` | 返回产品创建的终端及进程状态 |
-| 创建终端 | `POST /api/v1/terminals` | 固定终端 ID、目录、agent 和初始尺寸；不创建聊天记录 |
-| 关闭终端 | `DELETE /api/v1/terminals/{id}` | 用户明确结束指定终端；与断开页面严格分开 |
-| 附着终端 | `WS /api/v1/terminals/{id}/attach` | 建立临时附着；尺寸在首条消息内发送，不依赖查询参数 |
+| 浏览目录 | `GET /api/v1/directories?path=...` | 已实现；展开 `~` 并返回规范路径、父目录与有界的直接子目录，不递归扫描 |
+| 终端列表 | `GET /api/v1/terminals` | 已实现；返回专用 tmux server 中恢复的终端上下文及可选 `title`；标题来自 pane title 元数据，不含正文 |
+| 创建终端 | `POST /api/v1/terminals` | 已实现；可提交 `working_directory`，服务端验证后生成 ID 并在该 cwd 启动，不创建聊天记录 |
+| Codex 历史 | `GET /api/v1/codex/threads?working_directory=...` | Codex 模式已实现；返回当前终端 cwd 的原生 `name`、`preview` 与时间，不读取 provider 文件 |
+| 恢复 Codex 对话 | `POST /api/v1/codex/threads/{id}/resume` | Codex 模式已实现；请求提交当前 cwd，重新核对原生历史 ID 后在该目录的新 tmux 终端运行 `codex resume` |
+| 关闭终端 | `DELETE /api/v1/terminals/{id}` | 尚未实现；用户明确结束指定终端，与断开页面严格分开 |
+| 附着终端 | `WS /api/v1/terminals/{id}/attach` | 已实现；附着已知终端，尺寸在首条消息内发送，不依赖查询参数 |
 
 创建与修改请求使用 JSON，必须限制 body 大小并拒绝未知控制字段。启动命令由 daemon 的 agent 描述表决定，远程 API 不接受任意 shell 命令字符串。
+
+按目录创建的请求体为 `{"working_directory":"~/Developer/project"}`；省略字段时使用 daemon 默认 cwd。路径不存在、不是目录或不可访问时返回 400，不能自动创建或静默替换为其他目录。Codex slash command 不新增 HTTP 资源，它们作为当前附着的普通终端输入交给原生 TUI。
 
 ## WebSocket 消息
 
@@ -81,7 +85,7 @@ iPhone Safari 只通过 Tailscale tailnet 访问 Mac daemon。首版没有公网
 4. 新附着建立后，旧附着的输入和输出失效。首版每终端只有一个可写附着，daemon 原子替换旧连接。
 5. 输出序号只在一个附着内有效；发生缺口或过量积压时重新附着和重绘，不继续拼接残缺 ANSI 流。
 
-创建请求的 `terminal_id` 由浏览器为一次创建意图生成并持久保留；重试必须复用。Daemon 对相同 ID 和参数返回同一结果，参数不同返回冲突，并通过本地记录与确定性 tmux 标识核对启动中断，不启动第二个进程。
+当前创建请求由服务端生成 `terminal_id`，尚未实现幂等键。浏览器收到成功响应后将 ID 加入列表并记为当前项；若响应结果未知，应先重新获取列表，不能盲目 POST。后续为创建意图增加幂等键后，才可安全自动重试。
 
 关闭已关闭的终端可返回已关闭。离线时不排队创建、关闭或输入；请求结果未知时先查询状态，不盲目重发。
 

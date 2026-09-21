@@ -1,6 +1,6 @@
 # 开发环境
 
-状态：Tailscale 已安装并登录；单终端 Web/PTY/tmux 原型已实现，真实 iPhone 验收尚未完成。
+状态：Tailscale 已安装并登录；多终端、路径切换与 Codex 原生指令 Web/PTY/tmux 原型已实现，完整真实 iPhone 验收尚未完成。
 
 ## 当前机器
 
@@ -57,7 +57,7 @@ make check      # gofmt、Go 测试/vet 和开发前置脚本测试
 
 可通过 `make build BUILD_DIR=/path/to/output` 临时改变构建输出目录；默认不会在仓库根目录生成二进制。
 
-## 运行单终端原型
+## 运行多终端原型
 
 通过 Tailscale 地址直接提供 HTTP/WS，只能填写本机实际 Tailscale IP：
 
@@ -75,14 +75,16 @@ make check      # gofmt、Go 测试/vet 和开发前置脚本测试
 tailscale serve --bg 8080
 ```
 
-`-agent` 当前只接受 `codex` 或 `claude`，不接受远程提交的任意命令。关闭浏览器只关闭 tmux attach 客户端；专用 tmux session 与 agent 保留。原型 session 名固定为 `prototype`，尚无目录入口或多终端列表。
+`-agent` 当前只接受 `codex` 或 `claude`，不接受远程提交的任意命令。关闭浏览器只关闭 tmux attach 客户端；专用 tmux session 与 agent 保留。现有 session 名为 `prototype`，手机新建项使用 `session-<12hex>`；daemon 重启会从专用 tmux socket 恢复两类名称。
 
 ## 当前实现
 
-- `cmd/daemon`：运行内嵌页面、WebSocket 终端桥接与单个固定原型终端。
-- `internal/web`：限制监听到 loopback/Tailscale 地址，校验 WebSocket 同源，内嵌 xterm.js 6.0.0 与 fit addon 0.11.0。
-- `internal/terminal`：以参数数组调用专用 tmux server，通过 PTY 临时附着；新附着替换旧附着而不结束 agent。
+- `cmd/daemon`：运行内嵌页面、终端 catalog、HTTP API 与 WebSocket 桥接。
+- `internal/web`：限制监听到 loopback/Tailscale 地址，校验修改 API/WebSocket 同源，提供终端 list/create/dynamic attach 并内嵌 xterm.js。
+- `internal/directory`：展开 home shorthand、规范化和验证 cwd，并提供有界的直接子目录浏览。
+- `internal/terminal`：以参数数组调用专用 tmux server，在所选 cwd 恢复/创建独立 session 并保存 cwd 元数据，再通过 PTY 临时附着；同一终端的新附着替换旧附着而不结束 agent。
+- `internal/codex`：通过本机 Codex 官方 app-server 的 `thread/list` 读取所选 cwd 的原生名称与预览；不解析 `CODEX_HOME` 中的会话文件。
 - `internal/protocol`：旧 v1 envelope 类型；需按 Web 协议调整。
 - `cmd/relay`：被取代的公网 Relay 占位入口，不属于当前首版。
 
-当前实现仍是验证原型，不代表目录、多终端、daemon 重启恢复、Serve 稳定性或完整安全验收已经完成。下一步严格按 [validation.md](validation.md) 在真实 iPhone Safari 中验证。
+当前实现仍是验证原型；多个 cwd 的多终端与 daemon 重启恢复已完成自动化验证，路径面板及 Codex `/model` 等原生指令入口已接入。结束终端、创建幂等、Serve 长连接与完整安全验收尚未完成。下一步严格按 [validation.md](validation.md) 在真实 iPhone Safari 中验证。
