@@ -293,6 +293,11 @@ func TestMobilePathSheetBrowsesAndCreatesTerminalInSelectedDirectory(t *testing.
 			t.Errorf("mobile path sheet still contains placeholder %q", removed)
 		}
 	}
+	switchAction := strings.Index(page, `id="switch-path"`)
+	directoryBrowser := strings.Index(page, `id="directory-list"`)
+	if switchAction > directoryBrowser {
+		t.Error("mobile path switch action must remain visible before the scrollable directory browser")
+	}
 
 	scriptRequest := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
 	scriptResponse := httptest.NewRecorder()
@@ -302,6 +307,9 @@ func TestMobilePathSheetBrowsesAndCreatesTerminalInSelectedDirectory(t *testing.
 		`/api/v1/directories?path=`,
 		`working_directory: workingDirectory`,
 		`createSession(pathInput.value)`,
+		`function updatePathSwitchAction(path)`,
+		`新建并切换到 ${directoryName(value)}`,
+		`pathInput.addEventListener("input"`,
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("mobile path behavior does not contain %q", required)

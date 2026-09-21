@@ -2,6 +2,8 @@
 
 ## 2026-09-20
 
+- 用户反馈路径面板逐层到达 Yuniverse 后关闭面板，顶栏仍显示 code-remote。实时 API 证明 Yuniverse 终端 `session-52477ab1b578` 已存在；源码确认目录行点击只调用 browse，真正的 create/switch 按钮位于可滚动列表之后。阶段 15 启动，修复确认动作在 iPhone 上不易发现的问题。
+- 阶段 15 完成：先用失败测试复现确认按钮位于滚动列表之后，再把它移到列表上方并根据浏览/输入路径显示“新建并切换到 Yuniverse”。全量 `make check`、构建、JavaScript 语法、重新部署后的健康检查和真实 Yuniverse 目录 API 均通过。
 - 用户要求实现并推送工作目录切换，当前目标为 `~/Developer/personal/projects/Yuniverse`；已确认目录存在并解析为 `/Users/huangxinxinyu/Developer/personal/projects/Yuniverse`。阶段 13 启动，将按“新目录新终端、旧终端继续运行”的既有生命周期合同测试驱动实现。
 - 用户把后续优先级扩展到 Codex 原生 `/` 指令，模型切换最重要。官方文档已核实交互式 CLI 的 `/model` 合同；阶段 14 将复用原生 TUI 选择器，不在 Web 层维护模型清单或修改用户配置。
 - 阶段 13 自动化实现完成：目录 API 支持规范化、home shorthand、直接子目录浏览与无效路径拒绝；terminal create 可提交 cwd，tmux session 写入 cwd 元数据供 daemon 重启恢复；手机路径面板支持手输/逐层浏览并在目标目录新建后切换。Codex 历史读取和恢复同步跟随当前终端 cwd。

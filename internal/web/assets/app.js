@@ -109,6 +109,10 @@ function compactPath(value) {
   return value.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
 }
 
+function directoryName(value) {
+  return value.replace(/\/+$/, "").split("/").pop() || "/";
+}
+
 function rememberedTerminalID() {
   try {
     return localStorage.getItem("code-remote.active-terminal") || "";
@@ -306,8 +310,20 @@ function showPathError(message = "") {
   pathError.hidden = !message;
 }
 
+function updatePathSwitchAction(path) {
+  const value = path.trim();
+  switchPathButton.disabled = creatingSession || !value;
+  switchPathButton.title = value;
+  switchPathButton.textContent = creatingSession
+    ? "正在创建并切换…"
+    : value
+      ? `新建并切换到 ${directoryName(value)}`
+      : "请输入目标目录";
+}
+
 function renderDirectoryListing(listing) {
   pathInput.value = listing.path;
+  updatePathSwitchAction(listing.path);
   directoryList.replaceChildren();
   const rows = [];
   if (listing.parent && listing.parent !== listing.path) {
@@ -660,8 +676,7 @@ function setCreatingSession(value) {
   newSessionNav.disabled = value;
   newSessionButton.lastChild.textContent = value ? " 创建中…" : " 新建对话";
   newSessionNav.querySelector("small").textContent = value ? "创建中" : "新对话";
-  switchPathButton.disabled = value;
-  switchPathButton.textContent = value ? "正在创建…" : "在此目录新建对话";
+  updatePathSwitchAction(pathInput.value);
 }
 
 async function createSession(workingDirectory = "") {
@@ -762,6 +777,7 @@ pathForm.addEventListener("submit", (event) => {
   event.preventDefault();
   loadDirectory(pathInput.value);
 });
+pathInput.addEventListener("input", () => updatePathSwitchAction(pathInput.value));
 switchPathButton.addEventListener("click", () => createSession(pathInput.value));
 openModelPickerButton.addEventListener("click", () => sendNativeCommand("/model"));
 openSlashMenuButton.addEventListener("click", () => sendNativeCommand("/", false));
