@@ -1,11 +1,42 @@
+# macOS
 .DS_Store
+._*
 
-# Go
+# Editors and IDEs
+.idea/
+.vscode/
+.fleet/
+*.swp
+*.swo
+*~
+
+# Build and test output
 /bin/
+/build/
+/dist/
+/code-remote-daemon
 /coverage.out
+/coverage.html
+/coverage.xml
+/coverage/
+*.test
+*.prof
+
+# JavaScript tooling used for local asset work
+node_modules/
 
 # Local configuration and credentials
 .env
 .env.*
 !.env.example
 *.local
+.secrets/
+
+# Logs and temporary files
+*.log
+*.tmp
+.tmp/
+tmp/
+
+# Local agent planning and scratch state
+.planning/
