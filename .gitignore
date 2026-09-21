@@ -1,0 +1,11 @@
+.DS_Store
+
+# Go
+/bin/
+/coverage.out
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.local
