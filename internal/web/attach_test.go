@@ -18,12 +18,14 @@ import (
 type fakeSession struct {
 	attachment *fakeAttachment
 	ensured    chan terminalSize
+	returned   chan struct{}
 }
 
 func newFakeSession() *fakeSession {
 	return &fakeSession{
 		attachment: newFakeAttachment(),
 		ensured:    make(chan terminalSize, 1),
+		returned:   make(chan struct{}, 1),
 	}
 }
 
@@ -34,6 +36,46 @@ func (session *fakeSession) Ensure(_ context.Context, cols, rows uint16) error {
 
 func (session *fakeSession) OpenAttachment(_ context.Context, _, _ uint16) (TerminalAttachment, error) {
 	return session.attachment, nil
+}
+
+func (session *fakeSession) ReturnToLive(_ context.Context) error {
+	session.returned <- struct{}{}
+	return nil
+}
+
+func TestAttachHandlerReturnsFromHistoryBeforeNativeInput(t *testing.T) {
+	t.Parallel()
+	session := newFakeSession()
+	server := httptest.NewServer(NewHandler(NewAttachHandler(session)))
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	connection, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/api/v1/terminals/prototype/attach", &websocket.DialOptions{HTTPHeader: http.Header{"Origin": []string{server.URL}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = connection.CloseNow() })
+	writeJSON(t, ctx, connection, `{"v":1,"type":"terminal.attach","payload":{"cols":46,"rows":19}}`)
+	attached := readMessage(t, ctx, connection)
+	if attached.Type != "terminal.attached" {
+		t.Fatalf("message = %q, want terminal.attached", attached.Type)
+	}
+	id := attachmentID(t, attached.Payload)
+	writeJSON(t, ctx, connection, `{"v":1,"type":"terminal.focus","payload":{"attachment_id":"`+id+`"}}`)
+	writeJSON(t, ctx, connection, `{"v":1,"type":"terminal.input","payload":{"attachment_id":"`+id+`","data_base64":"`+base64.StdEncoding.EncodeToString([]byte("hello"))+`"}}`)
+	select {
+	case <-session.returned:
+	case <-ctx.Done():
+		t.Fatal("terminal focus did not leave history mode")
+	}
+	select {
+	case input := <-session.attachment.input:
+		if string(input) != "hello" {
+			t.Fatalf("terminal input = %q, want hello", input)
+		}
+	case <-ctx.Done():
+		t.Fatal("native input did not reach terminal")
+	}
 }
 
 type fakeAttachment struct {

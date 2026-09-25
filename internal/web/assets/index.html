@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-    <meta name="theme-color" content="#07101b">
+    <meta name="theme-color" content="#1b1e25">
     <title>Code Remote</title>
     <link rel="stylesheet" href="/assets/xterm.css">
     <link rel="stylesheet" href="/assets/app.css">
@@ -63,11 +63,6 @@
           </button>
         </div>
 
-        <section id="sent-commands" class="sent-commands" aria-label="本页已发送的命令" hidden>
-          <div class="stream-label">YOU · SENT TO TERMINAL</div>
-          <ol id="sent-command-list"></ol>
-        </section>
-
         <article class="terminal-card">
           <header class="terminal-card-header">
             <div class="agent-identity">
@@ -83,7 +78,7 @@
             </button>
           </header>
           <div class="terminal-stage">
-            <main id="terminal" aria-label="远程终端；可直接操作 Codex 原生界面"></main>
+            <main id="terminal" aria-label="远程终端；点击 Codex 原生输入栏后使用手机键盘"></main>
           </div>
         </article>
 
@@ -92,25 +87,6 @@
           <p><strong>原生会话保持完整。</strong> Code Remote 只传输终端，不会根据输出文字猜测任务状态。</p>
         </aside>
       </main>
-
-      <section id="command-composer" class="command-composer" aria-label="输入下一条指令">
-        <div class="composer-heading">
-          <span><small>NEXT COMMAND</small><strong>告诉 Codex 下一步做什么</strong></span>
-          <span id="composer-connection">等待连接</span>
-        </div>
-        <div class="composer-field">
-          <button id="composer-action" class="composer-action" type="button" data-sheet="actions" aria-label="打开命令操作">+</button>
-          <textarea id="command-input" rows="1" maxlength="2000" placeholder="输入你的指令..." aria-label="给 Codex 的指令"></textarea>
-          <button id="send-command" class="send-command" type="button" disabled data-state="disabled">
-            <span class="send-icon" aria-hidden="true">↑</span>
-            <span id="send-label">运行</span>
-          </button>
-        </div>
-        <div class="composer-meta">
-          <span>⌘ Enter 发送 · 支持多行</span>
-          <span id="command-counter">0/2000</span>
-        </div>
-      </section>
 
       <nav class="action-bar" aria-label="主要操作">
         <button id="terminal-action" class="action-item is-active" type="button" data-sheet="sessions">
@@ -189,15 +165,7 @@
           <div id="history-list" class="session-list history-list" role="list" aria-label="Codex 历史对话列表">
             <p class="session-list-empty">打开面板后读取 Codex 历史…</p>
           </div>
-          <p class="session-sheet-note">“打开”切换正在运行的终端；“恢复”会用 Codex 原生 session 新建一个终端。标题来自 Codex。</p>
-        </div>
-        <div class="sheet-view" data-sheet-view="actions" hidden>
-          <div class="sheet-action-list">
-            <button id="add-image" type="button" disabled><span>▧</span><strong>添加图片 · 尚未接入</strong></button>
-            <button id="add-file" type="button" disabled><span>＋</span><strong>添加文件 · 尚未接入</strong></button>
-            <button id="paste-command" type="button"><span>⌘V</span><strong>粘贴到指令框</strong></button>
-          </div>
-          <p>这里将用于给下一条指令添加图片、文件和其他上下文；当前终端协议尚未支持附件。</p>
+          <p class="session-sheet-note">“打开”切换正在运行的终端；“结束”只关闭所选终端，不会删除 Codex 原生历史；“恢复”会用原生 session 新建终端继续对话。标题来自 Codex。</p>
         </div>
         <div class="sheet-view" data-sheet-view="settings" hidden>
           <div class="sheet-current"><small>连接方式</small><strong>Private tailnet</strong><code>同源 HTTP / WebSocket</code></div>

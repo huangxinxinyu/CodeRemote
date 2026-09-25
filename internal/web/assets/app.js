@@ -1,21 +1,17 @@
 import { Terminal } from "/assets/xterm.mjs";
 import { FitAddon } from "/assets/addon-fit.mjs";
 
+// xterm measures cell width when it opens; wait for the bundled font first.
+await document.fonts.load('12.5px "JetBrains Mono"').catch(() => {});
+
 const status = document.querySelector("#connection-status");
 const statusLabel = document.querySelector("#connection-label");
 const sessionStateLabel = document.querySelector("#session-state-label");
-const composerConnection = document.querySelector("#composer-connection");
 const terminalElement = document.querySelector("#terminal");
 const terminalSize = document.querySelector("#terminal-size");
 const statusTerminalSize = document.querySelector("#status-terminal-size");
 const statusNetwork = document.querySelector("#status-network");
 const statusAttachment = document.querySelector("#status-attachment");
-const commandInput = document.querySelector("#command-input");
-const commandCounter = document.querySelector("#command-counter");
-const sendCommandButton = document.querySelector("#send-command");
-const sendLabel = document.querySelector("#send-label");
-const sentCommands = document.querySelector("#sent-commands");
-const sentCommandList = document.querySelector("#sent-command-list");
 const sheet = document.querySelector("#context-sheet");
 const sheetTitle = document.querySelector("#sheet-title");
 const sheetEyebrow = document.querySelector("#sheet-eyebrow");
@@ -44,45 +40,45 @@ const runtimeContext = {
 
 const terminal = new Terminal({
   cursorBlink: true,
-  fontFamily: "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontFamily: '"JetBrains Mono", "PingFang SC", "Hiragino Sans GB", ui-monospace, monospace',
   fontWeight: "400",
   fontWeightBold: "700",
-  fontSize: 12,
-  lineHeight: 1.18,
-  minimumContrastRatio: 5,
+  fontSize: 12.5,
+  lineHeight: 1.1,
+  minimumContrastRatio: 3,
   scrollback: 5000,
   theme: {
-    background: "#060c13",
-    foreground: "#dce7f5",
-    cursor: "#55c8ef",
-    cursorAccent: "#060c13",
-    selectionBackground: "#284b66aa",
-    black: "#05090e",
-    brightBlack: "#63748a",
-    green: "#3dd6b3",
-    brightGreen: "#78ebce",
-    yellow: "#efb86b",
-    brightYellow: "#ffd398",
-    red: "#ff727f",
-    brightRed: "#ff9aa3",
-    blue: "#69a8ff",
-    brightBlue: "#98c2ff",
-    cyan: "#55c8ef",
-    brightCyan: "#8fddf6",
-    magenta: "#aa8cff",
-    brightMagenta: "#c9b5ff",
-    white: "#dce7f5",
-    brightWhite: "#ffffff",
+    background: "#282c34",
+    foreground: "#ffffff",
+    cursor: "#ffffff",
+    cursorAccent: "#282c34",
+    selectionBackground: "#5a6372aa",
+    black: "#1d1f21",
+    brightBlack: "#666666",
+    green: "#b5bd68",
+    brightGreen: "#b9ca4a",
+    yellow: "#f0c674",
+    brightYellow: "#e7c547",
+    red: "#cc6666",
+    brightRed: "#d54e53",
+    blue: "#81a2be",
+    brightBlue: "#7aa6da",
+    cyan: "#8abeb7",
+    brightCyan: "#70c0b1",
+    magenta: "#b294bb",
+    brightMagenta: "#c397d8",
+    white: "#c5c8c6",
+    brightWhite: "#eaeaea",
   },
 });
 const fitAddon = new FitAddon();
 terminal.loadAddon(fitAddon);
 terminal.open(terminalElement);
+const terminalTextarea = terminalElement.querySelector(".xterm-helper-textarea");
 
 let socket;
 let attachmentID = "";
 let resizeTimer;
-let sending = false;
 let previousFocus;
 let activeTerminalID = runtimeContext.terminal_id;
 let connectedTerminalID = "";
@@ -91,13 +87,15 @@ let terminalContexts = [];
 let historyThreads = [];
 let creatingSession = false;
 let resumingThreadID = "";
+let deletingTerminalID = "";
+let sessionListError = "";
+const terminalTouch = { active: false, moved: false, pendingFocus: false, lastY: 0, remainder: 0 };
 
 const sheetLabels = {
   path: ["WORKING DIRECTORY", "切换项目 / 路径"],
   model: ["AGENT CONTEXT", "Agent 与模型"],
   status: ["LIVE STATUS", "连接与会话状态"],
   sessions: ["AGENT SESSIONS", "对话与终端"],
-  actions: ["ADD CONTEXT", "添加上下文"],
   settings: ["PRIVATE CONSOLE", "设置"],
 };
 
@@ -123,7 +121,11 @@ function rememberedTerminalID() {
 
 function rememberTerminalID(terminalID) {
   try {
-    localStorage.setItem("code-remote.active-terminal", terminalID);
+    if (terminalID) {
+      localStorage.setItem("code-remote.active-terminal", terminalID);
+    } else {
+      localStorage.removeItem("code-remote.active-terminal");
+    }
   } catch {
     // Private browsing may reject storage; the live session still works.
   }
@@ -152,7 +154,7 @@ function updateRuntimeContext() {
   document.querySelector("#working-directory").title = runtimeContext.working_directory;
   document.querySelector("#agent-name").textContent = runtimeContext.agent_id.toUpperCase();
   document.querySelector("#terminal-agent-name").textContent = agentName;
-  activeSessionName.textContent = sessionDisplayName(runtimeContext);
+  activeSessionName.textContent = runtimeContext.terminal_id ? sessionDisplayName(runtimeContext) : "暂无终端";
   document.querySelectorAll("[data-current-project]").forEach((element) => {
     element.textContent = runtimeContext.workspace_name || "当前目录";
   });
@@ -164,7 +166,7 @@ function updateRuntimeContext() {
     element.textContent = agentName;
   });
   document.querySelectorAll("[data-current-terminal]").forEach((element) => {
-    element.textContent = runtimeContext.terminal_id || "prototype";
+    element.textContent = runtimeContext.terminal_id || "暂无终端";
   });
   document.querySelectorAll("[data-codex-command]").forEach((element) => {
     element.disabled = runtimeContext.agent_id !== "codex";
@@ -191,14 +193,18 @@ function renderSessionList() {
     empty.className = "session-list-empty";
     empty.textContent = "还没有可用对话";
     sessionList.append(empty);
+    renderSessionListError();
     return;
   }
 
   terminalContexts.forEach((context) => {
+    const row = document.createElement("div");
+    row.className = "session-row-shell";
+    row.setAttribute("role", "listitem");
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "session-row";
-    button.setAttribute("role", "listitem");
     if (context.terminal_id === activeTerminalID) button.classList.add("is-current");
 
     const icon = document.createElement("span");
@@ -219,8 +225,28 @@ function renderSessionList() {
 
     button.append(icon, copy, state);
     button.addEventListener("click", () => switchTerminal(context.terminal_id));
-    sessionList.append(button);
+
+    const endButton = document.createElement("button");
+    endButton.type = "button";
+    endButton.className = "session-row-end";
+    endButton.textContent = deletingTerminalID === context.terminal_id ? "…" : "结束";
+    endButton.disabled = Boolean(deletingTerminalID);
+    endButton.setAttribute("aria-label", `结束 ${sessionDisplayName(context)}`);
+    endButton.addEventListener("click", () => endTerminal(context.terminal_id));
+
+    row.append(button, endButton);
+    sessionList.append(row);
   });
+  renderSessionListError();
+}
+
+function renderSessionListError() {
+  if (sessionListError) {
+    const error = document.createElement("p");
+    error.className = "session-list-empty";
+    error.textContent = sessionListError;
+    sessionList.prepend(error);
+  }
 }
 
 function renderHistoryList() {
@@ -288,20 +314,26 @@ async function loadTerminals() {
     if (!response.ok) throw new Error(`terminal list returned ${response.status}`);
     const payload = await response.json();
     terminalContexts = Array.isArray(payload.terminals) ? payload.terminals : [];
-    const remembered = rememberedTerminalID();
-    const selected = terminalContexts.find((context) => context.terminal_id === remembered);
-    if (selected) {
-      activeTerminalID = selected.terminal_id;
-      Object.assign(runtimeContext, selected);
+    if (terminalContexts.length === 0) {
+      showNoActiveTerminal();
+      return false;
     }
+    const remembered = rememberedTerminalID();
+    const selected = terminalContexts.find((context) => context.terminal_id === remembered)
+      || terminalContexts.find((context) => context.terminal_id === activeTerminalID)
+      || terminalContexts[0];
+    activeTerminalID = selected.terminal_id;
+    Object.assign(runtimeContext, selected);
     renderSessionList();
     updateRuntimeContext();
+    return true;
   } catch {
     sessionList.replaceChildren();
     const error = document.createElement("p");
     error.className = "session-list-empty";
     error.textContent = "读取对话失败，请稍后重试";
     sessionList.append(error);
+    return false;
   }
 }
 
@@ -382,17 +414,15 @@ function setStatus(text, state) {
   statusNetwork.textContent = text;
 
   const labels = {
-    connecting: ["ATTACHING", "终端连接中", "等待附着"],
-    attached: ["ATTACHED", "可发送指令", "已附着"],
-    disconnected: ["DETACHED", "连接已断开", "已断开"],
-    error: ["ERROR", "连接异常", "连接错误"],
-    exited: ["EXITED", "进程已退出", "进程已退出"],
+    connecting: ["ATTACHING", "等待附着"],
+    attached: ["ATTACHED", "已附着"],
+    disconnected: ["DETACHED", "已断开"],
+    error: ["ERROR", "连接错误"],
+    exited: ["EXITED", "进程已退出"],
   };
-  const [sessionLabel, composerLabel, attachmentLabel] = labels[state] || labels.error;
+  const [sessionLabel, attachmentLabel] = labels[state] || labels.error;
   sessionStateLabel.textContent = sessionLabel;
-  composerConnection.textContent = composerLabel;
   statusAttachment.textContent = attachmentLabel;
-  updateComposerState();
 }
 
 function bytesToBase64(bytes) {
@@ -433,38 +463,47 @@ function tmuxMouseWheelSequence(direction, clientX, clientY) {
 }
 
 function installTerminalTouchScrolling() {
-  const gesture = { active: false, lastY: 0, remainder: 0 };
   const pixelsPerStep = 22;
 
   terminalElement.addEventListener("touchstart", (event) => {
     if (event.touches.length !== 1) {
-      gesture.active = false;
+      terminalTouch.active = false;
       return;
     }
-    gesture.active = true;
-    gesture.lastY = event.touches[0].clientY;
-    gesture.remainder = 0;
+    terminalTouch.active = true;
+    terminalTouch.moved = false;
+    terminalTouch.pendingFocus = false;
+    terminalTouch.lastY = event.touches[0].clientY;
+    terminalTouch.remainder = 0;
   }, { capture: true, passive: true });
 
   terminalElement.addEventListener("touchmove", (event) => {
-    if (!gesture.active || event.touches.length !== 1 || !attachmentID) return;
+    if (!terminalTouch.active || event.touches.length !== 1 || !attachmentID) return;
     const touch = event.touches[0];
-    gesture.remainder += gesture.lastY - touch.clientY;
-    gesture.lastY = touch.clientY;
-    const steps = Math.min(6, Math.floor(Math.abs(gesture.remainder) / pixelsPerStep));
+    terminalTouch.remainder += terminalTouch.lastY - touch.clientY;
+    terminalTouch.lastY = touch.clientY;
+    const steps = Math.min(6, Math.floor(Math.abs(terminalTouch.remainder) / pixelsPerStep));
     if (steps === 0) return;
 
     event.preventDefault();
     event.stopPropagation();
-    const direction = gesture.remainder > 0 ? 1 : -1;
+    terminalTouch.moved = true;
+    terminalTouch.pendingFocus = false;
+    terminal.blur();
+    const direction = terminalTouch.remainder > 0 ? 1 : -1;
     const sequence = tmuxMouseWheelSequence(direction, touch.clientX, touch.clientY);
     for (let index = 0; index < steps; index += 1) sendInput(sequence);
-    gesture.remainder -= direction * steps * pixelsPerStep;
+    terminalTouch.remainder -= direction * steps * pixelsPerStep;
   }, { capture: true, passive: false });
 
-  const endGesture = () => {
-    gesture.active = false;
-    gesture.remainder = 0;
+  const endGesture = (event) => {
+    if (event.type === "touchend" && terminalTouch.pendingFocus && !terminalTouch.moved && attachmentID) {
+      send("terminal.focus", { attachment_id: attachmentID });
+    }
+    terminalTouch.active = false;
+    terminalTouch.moved = false;
+    terminalTouch.pendingFocus = false;
+    terminalTouch.remainder = 0;
   };
   terminalElement.addEventListener("touchend", endGesture, { capture: true, passive: true });
   terminalElement.addEventListener("touchcancel", endGesture, { capture: true, passive: true });
@@ -518,6 +557,9 @@ function connectToTerminal(terminalID = activeTerminalID, force = false) {
       attachmentID = message.payload.attachment_id;
       setStatus("已连接", "attached");
       fitAndResize();
+      if (document.activeElement === terminalTextarea) {
+        send("terminal.focus", { attachment_id: attachmentID });
+      }
       return;
     }
     if (message.type === "terminal.output" && message.payload.attachment_id === attachmentID) {
@@ -544,66 +586,17 @@ function connectToTerminal(terminalID = activeTerminalID, force = false) {
   });
 }
 
-function resizeComposer() {
-  commandInput.style.height = "auto";
-  commandInput.style.height = `${Math.min(commandInput.scrollHeight, 108)}px`;
-}
-
-function updateComposerState() {
-  const length = commandInput.value.length;
-  const ready = Boolean(attachmentID) && length > 0 && commandInput.value.trim().length > 0 && !sending;
-  commandCounter.textContent = `${length}/2000`;
-  sendCommandButton.disabled = !ready;
-  sendCommandButton.dataset.state = sending ? "sending" : ready ? "enabled" : "disabled";
-  sendLabel.textContent = sending ? "发送中" : "运行";
-}
-
-function addSentCommand(command) {
-  const item = document.createElement("li");
-  const content = document.createElement("span");
-  const timestamp = document.createElement("time");
-  content.textContent = command;
-  timestamp.textContent = new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date());
-  item.append(content, timestamp);
-  sentCommandList.append(item);
-  while (sentCommandList.children.length > 3) sentCommandList.firstElementChild.remove();
-  sentCommands.hidden = false;
-}
-
-function submitCommand() {
-  const command = commandInput.value.replace(/\s+$/, "");
-  if (!command.trim() || !attachmentID || sending) return;
-  sending = true;
-  updateComposerState();
-  if (!sendInput(`${command}\r`)) {
-    sending = false;
-    setStatus("发送失败", "error");
-    return;
-  }
-  addSentCommand(command);
-  commandInput.value = "";
-  resizeComposer();
-  commandInput.blur();
-  window.setTimeout(() => {
-    document.querySelector(".terminal-card").scrollIntoView({ behavior: "smooth", block: "start" });
-  }, 100);
-  window.setTimeout(() => {
-    sending = false;
-    updateComposerState();
-  }, 360);
+function nativeCommandSequence(command, submit = true) {
+  const bracketed = "\x1b[200~" + command + "\x1b[201~";
+  return submit ? bracketed + "\r" : bracketed;
 }
 
 function sendNativeCommand(command, submit = true) {
   if (runtimeContext.agent_id !== "codex" || !attachmentID) return;
-  if (!sendInput(`${command}${submit ? "\r" : ""}`)) {
+  if (!sendInput(nativeCommandSequence(command, submit))) {
     setStatus("发送失败", "error");
     return;
   }
-  addSentCommand(command);
   closeSheet();
   document.querySelector(".terminal-card").scrollIntoView({ behavior: "smooth", block: "start" });
   window.setTimeout(() => terminal.focus(), 120);
@@ -635,22 +628,6 @@ function closeSheet() {
   previousFocus?.focus();
 }
 
-async function pasteIntoComposer() {
-  try {
-    const pasted = await navigator.clipboard.readText();
-    const start = commandInput.selectionStart;
-    const end = commandInput.selectionEnd;
-    commandInput.setRangeText(pasted, start, end, "end");
-    resizeComposer();
-    updateComposerState();
-    closeSheet();
-    commandInput.focus();
-  } catch {
-    closeSheet();
-    commandInput.focus();
-  }
-}
-
 function switchTerminal(terminalID) {
   const context = terminalContexts.find((item) => item.terminal_id === terminalID);
   if (!context) return;
@@ -663,11 +640,61 @@ function switchTerminal(terminalID) {
   Object.assign(runtimeContext, context);
   updateRuntimeContext();
   renderSessionList();
-  sentCommandList.replaceChildren();
-  sentCommands.hidden = true;
   terminal.reset();
   closeSheet();
   connectToTerminal(terminalID, true);
+}
+
+function showNoActiveTerminal() {
+  connectionGeneration += 1;
+  if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+  socket = undefined;
+  attachmentID = "";
+  connectedTerminalID = "";
+  activeTerminalID = "";
+  rememberTerminalID("");
+  runtimeContext.terminal_id = "";
+  runtimeContext.title = "";
+  terminal.reset();
+  renderSessionList();
+  updateRuntimeContext();
+  setStatus("暂无终端", "disconnected");
+}
+
+async function endTerminal(terminalID) {
+  if (deletingTerminalID) return;
+  const context = terminalContexts.find((item) => item.terminal_id === terminalID);
+  if (!context) return;
+  const name = sessionDisplayName(context);
+  if (!window.confirm(`结束“${name}”？正在运行的 agent 会停止，终端现场将消失；Codex 原生历史仍会保留。`)) return;
+
+  deletingTerminalID = terminalID;
+  sessionListError = "";
+  renderSessionList();
+  try {
+    const response = await fetch(`/api/v1/terminals/${encodeURIComponent(terminalID)}`, {
+      method: "DELETE",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`terminal delete returned ${response.status}`);
+    const wasActive = terminalID === activeTerminalID;
+    terminalContexts = terminalContexts.filter((item) => item.terminal_id !== terminalID);
+    if (!wasActive) {
+      renderSessionList();
+      return;
+    }
+    const next = terminalContexts[terminalContexts.length - 1];
+    if (next) {
+      switchTerminal(next.terminal_id);
+    } else {
+      showNoActiveTerminal();
+    }
+  } catch {
+    sessionListError = "结束终端失败，请稍后重试";
+  } finally {
+    deletingTerminalID = "";
+    renderSessionList();
+  }
 }
 
 function setCreatingSession(value) {
@@ -750,18 +777,6 @@ new ResizeObserver(() => {
   resizeTimer = window.setTimeout(fitAndResize, 80);
 }).observe(terminalElement);
 
-commandInput.addEventListener("input", () => {
-  resizeComposer();
-  updateComposerState();
-});
-commandInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-    event.preventDefault();
-    submitCommand();
-  }
-});
-sendCommandButton.addEventListener("click", submitCommand);
-
 document.querySelectorAll("[data-sheet]").forEach((button) => {
   button.addEventListener("click", () => openSheet(button.dataset.sheet));
 });
@@ -784,7 +799,6 @@ openSlashMenuButton.addEventListener("click", () => sendNativeCommand("/", false
 document.querySelectorAll("[data-native-command]").forEach((button) => {
   button.addEventListener("click", () => sendNativeCommand(button.dataset.nativeCommand));
 });
-document.querySelector("#paste-command").addEventListener("click", pasteIntoComposer);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !sheet.hidden) {
     event.preventDefault();
@@ -794,25 +808,37 @@ document.addEventListener("keydown", (event) => {
 
 function updateKeyboardLayout() {
   if (!window.visualViewport) return;
-  const composerFocused = document.activeElement === commandInput;
   const keyboardVisible = window.visualViewport.height < window.innerHeight * 0.78;
-  document.body.classList.toggle("keyboard-open", composerFocused && keyboardVisible);
+  document.body.classList.toggle("keyboard-open", keyboardVisible);
+  if (keyboardVisible) {
+    document.body.style.setProperty("--visible-viewport-height", `${window.visualViewport.height}px`);
+  } else {
+    document.body.style.removeProperty("--visible-viewport-height");
+  }
   window.setTimeout(fitAndResize, 40);
 }
 
 window.visualViewport?.addEventListener("resize", updateKeyboardLayout);
-commandInput.addEventListener("focus", updateKeyboardLayout);
-commandInput.addEventListener("blur", () => {
+terminalTextarea.addEventListener("focus", () => {
+  if (attachmentID) {
+    if (terminalTouch.active) {
+      terminalTouch.pendingFocus = true;
+    } else {
+      send("terminal.focus", { attachment_id: attachmentID });
+    }
+  }
+  updateKeyboardLayout();
+});
+terminalTextarea.addEventListener("blur", () => {
   window.setTimeout(updateKeyboardLayout, 80);
 });
 
 async function bootstrap() {
   updateRuntimeContext();
-  updateComposerState();
   fitAndResize();
   await loadRuntimeContext();
-  await loadTerminals();
-  connectToTerminal(activeTerminalID);
+  const hasTerminals = await loadTerminals();
+  if (hasTerminals) connectToTerminal(activeTerminalID);
 }
 
 bootstrap();

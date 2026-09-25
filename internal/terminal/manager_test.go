@@ -19,6 +19,7 @@ type recordedCommand struct {
 type recordingRunner struct {
 	commands   []recordedCommand
 	hasSession bool
+	modeOutput string
 }
 
 func (runner *recordingRunner) Run(_ context.Context, name string, args ...string) error {
@@ -27,6 +28,41 @@ func (runner *recordingRunner) Run(_ context.Context, name string, args ...strin
 		return errors.New("session not found")
 	}
 	return nil
+}
+
+func (runner *recordingRunner) Output(_ context.Context, name string, args ...string) ([]byte, error) {
+	runner.commands = append(runner.commands, recordedCommand{name: name, args: append([]string(nil), args...)})
+	return []byte(runner.modeOutput), nil
+}
+
+func TestReturnToLiveOnlyCancelsTmuxCopyMode(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name       string
+		modeOutput string
+		wantCancel bool
+	}{
+		{name: "history", modeOutput: "1\n", wantCancel: true},
+		{name: "live", modeOutput: "0\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runner := &recordingRunner{modeOutput: test.modeOutput}
+			manager, err := NewManager(Config{TmuxPath: "tmux", SocketName: "code-remote", SessionName: "prototype", AgentPath: "codex", WorkingDir: "/tmp"}, runner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := manager.ReturnToLive(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			want := []recordedCommand{{name: "tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "display-message", "-p", "-t", "=prototype:0.0", "#{pane_in_mode}"}}}
+			if test.wantCancel {
+				want = append(want, recordedCommand{name: "tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "send-keys", "-X", "-t", "=prototype:0.0", "cancel"}})
+			}
+			if !reflect.DeepEqual(runner.commands, want) {
+				t.Fatalf("commands = %#v, want %#v", runner.commands, want)
+			}
+		})
+	}
 }
 
 func TestEnsureCreatesMissingTmuxSession(t *testing.T) {
@@ -126,7 +162,7 @@ func TestAttachCommandDoesNotStartAgent(t *testing.T) {
 	}
 
 	name, args := manager.AttachCommand()
-	wantArgs := []string{"-L", "code-remote", "-f", "/dev/null", "attach-session", "-t", "=prototype"}
+	wantArgs := []string{"-L", "code-remote", "-f", "/dev/null", "-u", "attach-session", "-t", "=prototype"}
 	if name != "tmux" || !reflect.DeepEqual(args, wantArgs) {
 		t.Fatalf("AttachCommand() = %q %#v, want %q %#v", name, args, "tmux", wantArgs)
 	}
@@ -169,7 +205,7 @@ func TestOpenAttachmentStartsTemporaryPTYAtRequestedSize(t *testing.T) {
 	if gotName != "tmux" {
 		t.Fatalf("PTY command = %q, want tmux", gotName)
 	}
-	wantArgs := []string{"-L", "code-remote", "-f", "/dev/null", "attach-session", "-t", "=prototype"}
+	wantArgs := []string{"-L", "code-remote", "-f", "/dev/null", "-u", "attach-session", "-t", "=prototype"}
 	if !reflect.DeepEqual(gotArgs, wantArgs) {
 		t.Fatalf("PTY args = %#v, want %#v", gotArgs, wantArgs)
 	}

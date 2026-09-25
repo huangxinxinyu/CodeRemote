@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/creack/pty"
@@ -30,6 +31,7 @@ type Config struct {
 // construction and idempotency can be tested without changing real sessions.
 type Runner interface {
 	Run(context.Context, string, ...string) error
+	Output(context.Context, string, ...string) ([]byte, error)
 }
 
 // TerminalAttachment is one temporary PTY client attached to a persistent
@@ -43,6 +45,7 @@ type TerminalAttachment interface {
 type Session interface {
 	Ensure(context.Context, uint16, uint16) error
 	OpenAttachment(context.Context, uint16, uint16) (TerminalAttachment, error)
+	ReturnToLive(context.Context) error
 }
 
 // ExecRunner runs commands directly without a shell.
@@ -127,7 +130,32 @@ func (manager *Manager) Ensure(ctx context.Context, cols, rows uint16) error {
 
 // AttachCommand returns a direct tmux invocation for a temporary PTY client.
 func (manager *Manager) AttachCommand() (string, []string) {
-	return manager.config.TmuxPath, append(manager.baseArgs(), "attach-session", "-t", "="+manager.config.SessionName)
+	// A launchd daemon may have no UTF-8 locale. Without -u, tmux replaces
+	// non-ASCII output with underscores before it reaches the Web terminal.
+	return manager.config.TmuxPath, append(manager.baseArgs(), "-u", "attach-session", "-t", "="+manager.config.SessionName)
+}
+
+// ReturnToLive leaves tmux copy mode only when this pane is in it. Focusing
+// the native terminal must not send Escape to Codex's own prompt or menus.
+func (manager *Manager) ReturnToLive(ctx context.Context) error {
+	target := "=" + manager.config.SessionName + ":0.0"
+	args := append(manager.baseArgs(), "display-message", "-p", "-t", target, "#{pane_in_mode}")
+	output, err := manager.runner.Output(ctx, manager.config.TmuxPath, args...)
+	if err != nil {
+		return fmt.Errorf("inspect tmux copy mode: %w", err)
+	}
+	switch strings.TrimSpace(string(output)) {
+	case "0":
+		return nil
+	case "1":
+		args = append(manager.baseArgs(), "send-keys", "-X", "-t", target, "cancel")
+		if err := manager.runner.Run(ctx, manager.config.TmuxPath, args...); err != nil {
+			return fmt.Errorf("leave tmux copy mode: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unexpected tmux copy mode value %q", strings.TrimSpace(string(output)))
+	}
 }
 
 // OpenAttachment starts a temporary tmux client under a PTY. Closing this PTY

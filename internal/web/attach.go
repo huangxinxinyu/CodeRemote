@@ -43,6 +43,10 @@ type inputPayload struct {
 	Data         string `json:"data_base64"`
 }
 
+type focusPayload struct {
+	AttachmentID string `json:"attachment_id"`
+}
+
 type resizePayload struct {
 	AttachmentID string `json:"attachment_id"`
 	Cols         uint16 `json:"cols"`
@@ -124,6 +128,15 @@ func NewAttachHandler(session TerminalSession) http.Handler {
 			}
 
 			switch message.Type {
+			case "terminal.focus":
+				var focus focusPayload
+				if err := decodeStrict(message.Payload, &focus); err != nil || focus.AttachmentID != attachmentID {
+					closeProtocolError(connection, "invalid terminal.focus payload")
+					return
+				}
+				if err := session.ReturnToLive(ctx); err != nil {
+					writeTerminalError(ctx, connection, "failed to return to live terminal")
+				}
 			case "terminal.input":
 				var input inputPayload
 				if err := decodeStrict(message.Payload, &input); err != nil || input.AttachmentID != attachmentID {

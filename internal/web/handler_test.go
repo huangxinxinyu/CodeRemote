@@ -29,7 +29,7 @@ func TestHandlerServesEmbeddedTerminalProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(body)
-	for _, required := range []string{`id="terminal"`, `id="connection-status"`, `id="command-input"`, `/assets/app.js`, `/assets/xterm.css`} {
+	for _, required := range []string{`id="terminal"`, `id="connection-status"`, `/assets/app.js`, `/assets/xterm.css`} {
 		if !strings.Contains(page, required) {
 			t.Errorf("GET / body does not contain %q", required)
 		}
@@ -78,10 +78,6 @@ func TestEmbeddedTerminalUsesMobileInstrumentShell(t *testing.T) {
 		`id="conversation-shell"`,
 		`class="terminal-card"`,
 		`id="terminal-size"`,
-		`id="command-composer"`,
-		`id="command-input"`,
-		`id="command-counter"`,
-		`id="send-command"`,
 		`class="action-bar"`,
 		`id="context-sheet"`,
 	} {
@@ -109,24 +105,6 @@ func TestMobileShellOmitsRedundantTerminalKeyDeck(t *testing.T) {
 	} {
 		if strings.Contains(page, removed) {
 			t.Errorf("mobile terminal shell still contains redundant control %q", removed)
-		}
-	}
-}
-
-func TestComposerDismissesKeyboardAfterSending(t *testing.T) {
-	t.Parallel()
-
-	request := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
-	response := httptest.NewRecorder()
-	NewHandler(nil).ServeHTTP(response, request)
-	script := response.Body.String()
-
-	for _, required := range []string{
-		`commandInput.blur();`,
-		`document.querySelector(".terminal-card").scrollIntoView`,
-	} {
-		if !strings.Contains(script, required) {
-			t.Errorf("composer send flow does not contain %q", required)
 		}
 	}
 }
@@ -238,7 +216,46 @@ func TestMobileSessionListPrefersNativeAgentTitle(t *testing.T) {
 	}
 }
 
-func TestMobileActionsSeparateAttachmentsFromNewSession(t *testing.T) {
+func TestMobileSessionListCanEndTerminalWithoutDeletingNativeHistory(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(nil)
+	pageRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	pageResponse := httptest.NewRecorder()
+	handler.ServeHTTP(pageResponse, pageRequest)
+	page := pageResponse.Body.String()
+	for _, required := range []string{
+		`“结束”只关闭所选终端，不会删除 Codex 原生历史`,
+	} {
+		if !strings.Contains(page, required) {
+			t.Errorf("mobile session guidance does not contain %q", required)
+		}
+	}
+
+	scriptRequest := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
+	scriptResponse := httptest.NewRecorder()
+	handler.ServeHTTP(scriptResponse, scriptRequest)
+	script := scriptResponse.Body.String()
+	for _, required := range []string{
+		`endButton.className = "session-row-end"`,
+		`endButton.addEventListener("click", () => endTerminal(context.terminal_id))`,
+		`window.confirm`,
+		`method: "DELETE"`,
+		`terminalContexts = terminalContexts.filter`,
+		`showNoActiveTerminal()`,
+		`runtimeContext.terminal_id ? sessionDisplayName(runtimeContext) : "暂无终端"`,
+		`runtimeContext.terminal_id || "暂无终端"`,
+		`let sessionListError = "";`,
+		`if (sessionListError) {`,
+		`sessionListError = "结束终端失败，请稍后重试";`,
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("mobile terminal end flow does not contain %q", required)
+		}
+	}
+}
+
+func TestMobileActionsKeepNativeTerminalAsOnlyInput(t *testing.T) {
 	t.Parallel()
 
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -247,9 +264,7 @@ func TestMobileActionsSeparateAttachmentsFromNewSession(t *testing.T) {
 	page := response.Body.String()
 
 	for _, required := range []string{
-		`id="composer-action"`,
-		`id="add-image"`,
-		`id="add-file"`,
+		`id="terminal"`,
 		`id="new-session-nav"`,
 		`data-sheet="sessions"`,
 		`<small>对话</small>`,
@@ -260,6 +275,11 @@ func TestMobileActionsSeparateAttachmentsFromNewSession(t *testing.T) {
 		}
 	}
 	for _, removed := range []string{
+		`id="command-composer"`,
+		`id="command-input"`,
+		`id="send-command"`,
+		`id="composer-action"`,
+		`id="sent-commands"`,
 		`data-sheet="project"`,
 		`id="new-session-action"`,
 		`<small>切换项目</small>`,
@@ -347,6 +367,10 @@ func TestMobileModelSheetUsesCodexNativeSlashCommands(t *testing.T) {
 	for _, required := range []string{
 		`function sendNativeCommand(command, submit = true)`,
 		`runtimeContext.agent_id !== "codex"`,
+		`function nativeCommandSequence(command, submit = true)`,
+		`const bracketed = "\x1b[200~" + command + "\x1b[201~";`,
+		`return submit ? bracketed + "\r" : bracketed;`,
+		`sendInput(nativeCommandSequence(command, submit))`,
 		`sendNativeCommand("/model")`,
 		`sendNativeCommand("/", false)`,
 	} {
