@@ -1,6 +1,6 @@
 # 决策与项目记忆
 
-更新于 2026-09-20。用户确认的需求优先于工程建议；建议未通过验证时可替换实现，不默认扩大功能范围。
+更新于 2026-09-24。用户确认的需求优先于工程建议；建议未通过验证时可替换实现，不默认扩大功能范围。
 
 ## 用户已确认
 
@@ -15,15 +15,18 @@
 | 手机中断不停止任务，回来能恢复 | tmux 在 Mac 上保活，浏览器重新附着 |
 | 同目录可开多个独立终端 | 允许切换，不要求协调文件冲突 |
 | 账号业务暂缓 | 不设计统一模型服务或 provider 登录流程 |
-| 移动端控制台采用清晰的上下文、运行现场和独立 composer | 用户要求优先解决输入区域、project/path context、status 与 next action 的信息层级，同时保留现有远程终端能力 |
+| 移动端控制台保留单一原生终端输入 | 用户真机确认 Codex 上方原生输入栏已支持指令，要求移除下方重复 composer；保留工作目录、状态与终端入口 |
 | 不保留额外终端控制键条 | 用户确认手机键盘已经满足需要；界面把空间优先留给 agent 实时输出 |
 | 恢复 agent 原生 ANSI 样式 | 浏览器 xterm 支持颜色与字重；新 agent 进程不继承宿主启动环境中的 `NO_COLOR`，但不改用户配置或 provider 环境目录 |
 | 手机可以新建和切换对话 | “新对话”严格映射为新的 `terminal_id`、tmux session 和 agent 原生 session；旧终端继续运行，不增加产品聊天数据库 |
+| 手机可以清理终端并恢复电脑上的原生 session | “结束”只终止所选产品受控 tmux/agent 现场，不等同于离开页面，也不删除 Codex 原生历史；历史继续通过官方 `thread/list` 查找，并以 `codex resume` 在新终端恢复 |
 | 会话列表优先显示 agent 原生标题 | 读取 agent 主动写入的 tmux pane title；不解析终端正文，不读取 provider 私有会话文件，空标题仍回退为本地编号 |
 | 手机能选择过去的 Codex 对话 | 通过官方 app-server `thread/list` 获取 Codex 原生名称和 ID，选择后以 `codex resume <id>` 启动新终端；不创建聊天数据库 |
 | Codex 工作区支持单指上下滑动 | 触摸手势映射为隔离 tmux server 的原生滚轮/copy-mode 回滚，不把 TUI 输出复制成普通文本列表 |
 | 手机可以切换工作目录 | 路径面板支持手输和逐层浏览；确认后在所选 cwd 新建独立终端，不能修改运行中终端的 cwd |
 | 模型切换优先复用 Codex 原生指令 | `/model` 打开 Codex 自己的模型与推理强度选择器；网页不维护账号相关模型清单 |
+| `/model` 暂用原生键盘操作 | 用户确认手机键盘可以操作选择器，决定暂不增加触摸点选或网页模型清单 |
+| 网页预组装的 Codex 指令显式标记粘贴边界 | 真机反馈后复现确认：同批发送普通 `/model\r` 只输入不提交；`ESC[200~...ESC[201~` 后再回车可由原生 TUI 稳定区分正文与提交键，不引入模型 API 或固定延时 |
 
 ## 建议作为实现基线
 
@@ -44,6 +47,7 @@
 - **产品管理自己的聊天会话**：不采用，继续使用 agent 原生 TUI/session。
 - **创建 Project 后绑定目录**：不采用，目录仅是启动位置。
 - **首版预留协同界面**：不采用，不因未来可能性扩大范围。
+- **原生 TUI 下方再放独立 composer**：真机确认出现两个输入位置后由用户撤回；只保留 agent 原生输入栏。
 
 ## 概念辨析
 
@@ -55,6 +59,8 @@ Tailscale 是网络接入层，不是 Code Remote 的应用后端。它解决手
 
 agent 原生 session、tmux 托管终端、浏览器 WebSocket 附着是三种不同生命周期。原生 session 可恢复历史，不自动替代存活进程或终端屏幕恢复。
 
+终端列表中的“结束”是显式破坏性操作，需要手机确认后调用同源 `DELETE /api/v1/terminals/{id}`。Daemon 只对 catalog 已知 ID 发出精确 tmux 删除命令；删除当前终端后切换到剩余终端，若无剩余项则展示“暂无终端”，不会自动重建 agent。Codex 历史与该删除相互独立。
+
 新版 UI 中的状态仍只描述产品已知事实：WebSocket `connecting/attached/disconnected`、终端进程退出和终端尺寸。原生 TUI 是 Codex/Claude 输出的权威表示；页面不根据文字猜测 completed/running/waiting，也不建立结构化消息或工具调用协议。Project 继续只是 cwd 的显示名；路径切换只在所选目录创建新终端，不新增 Project 实体。
 
 对话名称与任务状态分开：终端列表可以展示 CLI 通过终端标题控制序列写入、由 tmux 暴露的 `pane_title`。当前 Codex 会在生成自动标题后更新该值；Code Remote 只把它作为可选显示名，不能由名称推断执行进度。不得使用子进程继承的 `CODEX_THREAD_ID` 绑定会话，因为 daemon 从 Codex 内启动时该变量可能属于父会话。
@@ -63,7 +69,15 @@ Codex 历史选择是 provider-native integration，不是产品 Conversation �
 
 Codex 模型切换和 slash command 同样是原生 TUI integration：页面可发送 `/model`、输入 `/` 打开原生命令菜单，并快捷触发 `/status`、`/permissions`、`/review`。具体模型列表、推理强度、权限选择和命令可用性由当前 Codex CLI 与账号决定；Claude 模式不启用这些 Codex 专用按钮。会修改工作区文件的 `/init` 不做一键快捷入口。
 
-Composer 发送成功后主动释放输入焦点，让 iPhone 键盘收起并恢复终端高度；这只改变浏览器布局，不改变 agent 或 tmux 生命周期。
+上述网页快捷入口发送的是终端语义，不是产品命令 API：指令正文用 bracketed-paste 边界标记，提交型命令在边界结束后追加回车，`/` 菜单则不追加回车。2026-09-24 曾确认旧 composer 的第二轮中文指令也需要相同边界；该独立 composer 后按用户要求移除。当前直接在原生终端输入仍传原始按键，不会在 agent 忙碌时自动中断任务。
+
+旧 composer 的发送后焦点处理随其移除。当前 xterm 聚焦时，daemon 只在该 tmux pane 处于 copy mode 时退出回滚，避免把 Esc 误送到 Codex；移动端滑动终端会释放焦点并隐藏失去焦点的回滚定位光标。键盘高度由 Safari 可见视口驱动终端布局，不改变 agent 或 tmux 生命周期。
+
+2026-09-24 用户确认第二轮提交修复后，要求移动端终端的文字/配色与屏幕利用率都向 Ghostty 靠近。本机 Ghostty 配置为空，采用其默认暗色调色板和 JetBrains Mono 作为视觉参考；字体文件固定为 JetBrains Mono v2.304 并保留 OFL 许可证。Web 端仍由 xterm.js 负责渲染；先等待字体加载再打开终端，防止字体切换后单元格宽度失准。布局压缩移动端周边控件并扩展原生 TUI 区域，中文使用系统 CJK 回退。本机窄屏浏览器在保留旧独立 composer 时测得终端由 17 行增至 23 行；后续移除重复输入后增至 28 行，真实 iPhone 键盘状态还需复核。
+
+同日真机截图暴露了视觉修复遗漏：Codex/tmux 已输出 ANSI 真彩色和粗体，xterm 也给对应文字生成 `xterm-fg-*` / `xterm-bold` class，但原 CSP 的 `style-src 'self'` 阻止 xterm DOM renderer 注入的样式表，浏览器计算结果全部是普通白字。浏览器探针在修改前稳定失败；把样式策略改为 `style-src 'self' 'unsafe-inline'` 后，同一探针确认运行时样式表生效、绿色代码路径与 700 字重恢复。`script-src 'self'`、`connect-src 'self'` 等约束保持独立；只渲染 agent 已输出的终端样式，不把纯文本解析成产品 Markdown。
+
+2026-09-24 工程验证：用户的 iPhone 截图中中文变成横线；Mac 上 tmux `capture-pane` 保留了正确中文，而实际 launchd daemon 没有 UTF-8 locale。隔离 tmux PTY 探针在无 locale 时复现了下划线输出，并证明客户端全局 `-u` 恢复 UTF-8。因此所有浏览器 tmux 附着显式加 `-u`；不覆盖 `HOME/CODEX_HOME`，也不修改 agent 的 locale。
 
 “后台一直跑”落实为 Mac 持续执行。iPhone 锁屏后连接可以断开，回到页面时重新附着；不依赖 Safari 在后台常驻。
 

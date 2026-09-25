@@ -1,6 +1,6 @@
 # 项目架构
 
-状态：Web + Tailscale 首版设计基线；移动端控制台、多个独立终端与 tmux 恢复原型已实现，真实 iPhone 已通过直接 tailnet 与 Serve 基础连接，完整交互及长连接仍待验收。更新于 2026-09-20。
+状态：Web + Tailscale 首版设计基线；移动端控制台、多个独立终端、显式结束与 tmux/Codex 原生 session 恢复原型已实现，真实 iPhone 已通过直接 tailnet 与 Serve 基础连接，结束/恢复交互及长连接仍待验收。更新于 2026-09-24。
 
 ## 产品约束
 
@@ -46,13 +46,23 @@ Tailscale 负责跨网络寻址、加密传输与 tailnet 访问控制；Web dae
 
 ## 关键职责边界
 
-- Web UI：以独立上下文条展示当前工作目录与 agent，以原生 TUI 卡片呈现权威运行现场，通过独立 composer 或终端直接输入传递字节；可浏览路径，并在所选 cwd 新建和切换独立终端。Codex 模式额外列出当前 cwd 的原生历史名称、恢复到新终端，并可触发 `/model`、原生 `/` 菜单及少量明确快捷指令。
+- Web UI：以独立上下文条展示当前工作目录与 agent，以可直接输入的原生 TUI 卡片呈现权威运行现场；可浏览路径，并在所选 cwd 新建、切换或经确认后结束独立终端。Codex 模式额外列出当前 cwd 的原生历史名称、恢复到新终端，并可触发 `/model`、原生 `/` 菜单及少量明确快捷指令。
 - Daemon：以当前 Mac 用户身份执行认证后的目录与终端请求；不复制 provider 凭据到浏览器或 Tailscale 服务端。
 - Tailscale：提供设备入网、加密连通、MagicDNS 与 ACL；不管理 agent、目录和终端。
 - tmux：保留运行中的 agent 和终端现场。页面关闭或网络断开只移除附着客户端，不销毁 agent。
 - Agent：模型调用、工具执行、权限确认、原生会话恢复。产品不解析 TUI 来生成任务状态，也不实现跨 provider 会话互转。
 
 浏览器终端按 ANSI/SGR 渲染 agent 原生样式，包括 256 色、粗体、暗色、下划线和反色；终端协议不携带任意字体族或富文本组件。Daemon 启动新 agent 时保留用户环境，但只移除与彩色终端目标直接冲突的 `NO_COLOR`，不改写 `HOME`、`CODEX_HOME` 或权限参数。
+
+移动端终端视觉以本机 Ghostty 默认配置为参考：xterm.js 使用随二进制内嵌的 JetBrains Mono Regular/Bold、对应暗色 ANSI 调色板和紧凑行距。浏览器字体加载完成后再创建终端，避免 xterm 缓存备用字体的错误单元格宽度；中文继续使用系统 CJK 等宽回退。页面缩短顶栏、上下文条，移除重复输入框，并让终端区域占用剩余高度，不改变终端字节流或原生 TUI 的内容边界。
+
+xterm.js 的 DOM renderer 会在运行时创建页内样式表，用于 ANSI 前景色、背景色及粗体。Web 响应的 CSP 对样式允许同源资源与页内样式，否则终端字节和 DOM class 虽然正确，浏览器仍把所有文字画成同色同重；脚本、连接、图片等 CSP 限制保持原有边界。
+
+PTY 附着 tmux 时显式使用全局 `-u` 选项输出 UTF-8。2026-09-24 在无 `LANG/LC_*` 的 launchd daemon 中复现：不带此选项时，tmux 内部保存的中文正确，但附着客户端收到等宽下划线；带 `-u` 后客户端收到原始中文 UTF-8。此修复只影响附着输出编码，不修改 agent 环境或原生会话。
+
+网页预组装的 Codex 原生快捷指令使用终端 bracketed-paste 起止序列包住指令正文，再在需要提交时追加回车。依据 2026-09-21 的真实链路复现，直接把 `/model\r` 作为同一批普通字节写入只会把文字留在 Codex 输入框；显式 paste 结束边界后 Codex 才能区分正文与提交键。浏览器终端内直接键入的字节仍原样转发。
+
+tmux copy mode 的定位光标与 Codex 输入光标是两种位置。浏览器在终端失焦时隐藏前者；轻点原生输入结束后，daemon 精确检查该终端的 `#{pane_in_mode}`，仅在回滚中用 `send-keys -X cancel` 返回实时画面，然后让按键继续进入 agent。触摸滑动不会触发这个返回动作。键盘弹起时用 Safari `visualViewport.height` 缩放终端容器，避免原生输入区落在可见视口外。
 
 终端输出可能包含代码和凭据。Daemon 不记录输入输出正文；Tailscale 控制面不等于应用服务器，不应把 tailnet 身份 token 或 provider 凭据写入仓库。详见[通信协议](docs/protocol.md)。
 
@@ -67,6 +77,8 @@ Tailscale 负责跨网络寻址、加密传输与 tailnet 访问控制；Web dae
 
 恢复网页连接意味着重新附着 `terminal_id`，不等于新建 agent 对话。
 
+显式结束 `terminal_id` 会精确终止对应的产品受控 tmux session，并使当前浏览器附着失效；它不删除 agent 原生 session。手机仍可通过 Codex `thread/list` 找到保存的历史，并以 `codex resume <id>` 在新终端中继续对话。页面离开、WebSocket 断开和显式结束必须保持不同语义。
+
 ## 代码目录
 
 目标结构随实现逐步落地：
@@ -75,10 +87,10 @@ Tailscale 负责跨网络寻址、加密传输与 tailnet 访问控制；Web dae
 cmd/daemon/               可运行的多终端 Mac Web daemon 原型
 internal/protocol/        已创建旧版 JSON envelope；实现时按新协议调整
 internal/discovery/       后续：CLI 描述表和路径发现
-internal/terminal/        已实现 tmux session catalog、恢复、PTY 附着和每终端单写附着替换
+internal/terminal/        已实现 tmux session catalog、恢复、显式结束、PTY 附着和每终端单写附着替换
 internal/codex/           通过官方 app-server thread/list 读取 Codex 原生历史元数据
 internal/directory/       工作目录规范化与有界的直接子目录浏览
-internal/web/             已实现内嵌 xterm.js、终端 list/create API 与动态 WebSocket 桥接
+internal/web/             已实现内嵌 xterm.js、终端 list/create/delete API 与动态 WebSocket 桥接
 cmd/relay/                旧公网 Relay 占位入口，不属于当前首版
 docs/                     产品、决策、运行时、协议、验证和开发文档
 ```
@@ -91,6 +103,6 @@ docs/                     产品、决策、运行时、协议、验证和开发
 
 当前最大未知是 iPhone Safari 终端交互以及 Tailscale Serve + WebSocket 的稳定性。具体退出条件见[验证计划](docs/validation.md)。
 
-当前页面通过 `GET /api/v1/context` 读取默认上下文，并从终端列表切换到各自的 agent、cwd、终端 ID 及由 cwd basename 派生的工作区显示名。目录 API 只按需返回直接子目录；创建 API 验证提交路径后用 tmux `-c` 启动。终端列表还读取 tmux `pane_title` 作为可选的 agent 原生会话标题；它是 TUI 主动提供的终端元数据，不来自正文解析，也不表示任务状态。接口不读取 provider 会话文件；模型只标记为 native session，`/model` 选择仍完全发生在原生 TUI。浏览器中 composer 的“已发送”记录仅存在于当前页面内，不持久化，也不构成产品聊天数据库。
+当前页面通过 `GET /api/v1/context` 读取默认上下文，并从终端列表切换到各自的 agent、cwd、终端 ID 及由 cwd basename 派生的工作区显示名。目录 API 只按需返回直接子目录；创建 API 验证提交路径后用 tmux `-c` 启动。终端列表还读取 tmux `pane_title` 作为可选的 agent 原生会话标题；它是 TUI 主动提供的终端元数据，不来自正文解析，也不表示任务状态。接口不读取 provider 会话文件；模型只标记为 native session，`/model` 选择仍完全发生在原生 TUI。页面不建立产品聊天数据库或重复的已发送命令列表。
 
-原型将 xterm.js 的 ESM 发布文件、样式与 MIT 许可证固定在仓库中并嵌入 Go 二进制，不从 CDN 加载；这样手机只需要访问 Mac 的私有服务，运行时不依赖公网或 Node。版本升级必须重新执行真机输入与重绘验收。
+原型将 xterm.js 的 ESM 发布文件、样式与 MIT 许可证，以及 JetBrains Mono WOFF2 与 OFL 许可证固定在仓库中并嵌入 Go 二进制，不从 CDN 加载；这样手机只需要访问 Mac 的私有服务，运行时不依赖公网或 Node。版本升级必须重新执行真机输入与重绘验收。

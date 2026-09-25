@@ -1,6 +1,6 @@
 # 通信协议草案
 
-状态：Web + Tailscale v0 合同；多终端 attach/input/output/resize、目录浏览与按 cwd 创建、Codex 历史/恢复均已在原型实现，完整错误码、关闭与创建幂等仍待实现。
+状态：Web + Tailscale v0 合同；多终端 create/delete/attach/input/output/resize、目录浏览与按 cwd 创建、Codex 历史/恢复均已在原型实现，完整错误码与创建幂等仍待实现。
 
 ## 连接与信任
 
@@ -41,12 +41,14 @@ iPhone Safari 只通过 Tailscale tailnet 访问 Mac daemon。首版没有公网
 | 创建终端 | `POST /api/v1/terminals` | 已实现；可提交 `working_directory`，服务端验证后生成 ID 并在该 cwd 启动，不创建聊天记录 |
 | Codex 历史 | `GET /api/v1/codex/threads?working_directory=...` | Codex 模式已实现；返回当前终端 cwd 的原生 `name`、`preview` 与时间，不读取 provider 文件 |
 | 恢复 Codex 对话 | `POST /api/v1/codex/threads/{id}/resume` | Codex 模式已实现；请求提交当前 cwd，重新核对原生历史 ID 后在该目录的新 tmux 终端运行 `codex resume` |
-| 关闭终端 | `DELETE /api/v1/terminals/{id}` | 尚未实现；用户明确结束指定终端，与断开页面严格分开 |
+| 关闭终端 | `DELETE /api/v1/terminals/{id}` | 已实现；同源且经 UI 确认后结束 catalog 中的指定 tmux session，不删除 agent 原生历史；重复删除返回成功 |
 | 附着终端 | `WS /api/v1/terminals/{id}/attach` | 已实现；附着已知终端，尺寸在首条消息内发送，不依赖查询参数 |
 
 创建与修改请求使用 JSON，必须限制 body 大小并拒绝未知控制字段。启动命令由 daemon 的 agent 描述表决定，远程 API 不接受任意 shell 命令字符串。
 
 按目录创建的请求体为 `{"working_directory":"~/Developer/project"}`；省略字段时使用 daemon 默认 cwd。路径不存在、不是目录或不可访问时返回 400，不能自动创建或静默替换为其他目录。Codex slash command 不新增 HTTP 资源，它们作为当前附着的普通终端输入交给原生 TUI。
+
+浏览器预组装的 Codex slash command 在 `terminal.input` 数据中使用 bracketed-paste 起止序列包住指令正文，提交型指令在结束边界后追加 `CR`；只打开 `/` 菜单时不追加。这样保留终端字节协议，同时避免 Codex 把同批正文与回车识别成未提交的粘贴内容。旧版独立 composer 已移除；原生终端直接键入保持原字节路径。Daemon 不解析或识别这些指令。
 
 ## WebSocket 消息
 
@@ -70,6 +72,7 @@ iPhone Safari 只通过 Tailscale tailnet 访问 Mac daemon。首版没有公网
 | --- | --- | --- |
 | `terminal.attached` | 服务端 → 浏览器 | 附着成功及 `attachment_id` |
 | `terminal.input` | 浏览器 → 服务端 | `attachment_id` + `data_base64`，写入 PTY |
+| `terminal.focus` | 浏览器 → 服务端 | `attachment_id`；仅在所选 tmux pane 处于 copy mode 时退出回滚，不向 agent 发送 Esc |
 | `terminal.output` | 服务端 → 浏览器 | `attachment_id` + 流内序号 + `data_base64` |
 | `terminal.resize` | 浏览器 → 服务端 | 更新该附着的行列数 |
 | `terminal.exited` | 服务端 → 浏览器 | agent 已退出及可取得的退出码 |
@@ -88,6 +91,8 @@ iPhone Safari 只通过 Tailscale tailnet 访问 Mac daemon。首版没有公网
 当前创建请求由服务端生成 `terminal_id`，尚未实现幂等键。浏览器收到成功响应后将 ID 加入列表并记为当前项；若响应结果未知，应先重新获取列表，不能盲目 POST。后续为创建意图增加幂等键后，才可安全自动重试。
 
 关闭已关闭的终端可返回已关闭。离线时不排队创建、关闭或输入；请求结果未知时先查询状态，不盲目重发。
+
+结束当前终端后，浏览器若还有其他运行终端则附着其中一个；若列表为空则进入“暂无终端”状态，等待用户明确新建或从 Codex 原生历史恢复。不得把删除终端实现成自动创建替代终端。
 
 键盘输入没有应用级重放保证：连接中断时可能无法判断最后一段是否已执行。页面显示连接中断，重连后由用户根据屏幕继续。
 

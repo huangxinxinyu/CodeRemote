@@ -14,6 +14,8 @@
 - 手机端需要能够“新建对话”；按既有产品边界，这表示创建新的独立 `terminal_id` / tmux / agent 原生 session，并允许列出和切换，不表示建立产品聊天记录或跨 provider conversation 对象。
 - 2026-09-20 用户要求实现真实路径切换，当前明确目标为 `~/Developer/personal/projects/Yuniverse`。切换不能修改运行中 agent 的 cwd；应在所选目录创建独立终端并切换浏览器附着，旧终端继续运行。
 - 路径切换完成后，用户希望继续实现原生 `/` 指令入口，并把模型切换列为最高优先级。OpenAI 官方 Codex CLI 文档确认 `/model` 会打开模型与推理强度选择；前端应触发原生 TUI 流程，不硬编码账号相关模型列表。
+- 2026-09-22 用户明确要求手机能够清理不再需要的终端，并能找到电脑上的 agent 原生 session、恢复后继续对话。清理对象是产品受控 tmux 终端，不应删除 Codex 原生历史；恢复继续使用官方 `thread/list` 与 `codex resume`，不新增聊天数据库。
+- 2026-09-24 用户确认中文显示恢复，但普通 composer 的第二轮指令停在 Codex 原生输入框；两个新 pane 均如此，单独 Enter 后其中一项开始执行。Codex composer 发送需复用已验证的 bracketed-paste 结束边界，不能只用于 slash command。
 
 ## Tailscale 接入核查
 
@@ -43,6 +45,10 @@
 - 首版每个终端只允许一个可写附着；输入在断线后不自动重放。
 - 多 session 实现采用专用 tmux server 作为恢复事实源：现有 `prototype` 保持兼容，新终端使用受限的 `session-<随机十六进制>` 名称；daemon 启动时只恢复该命名空间内的 session。agent 沿用 daemon 配置，每个终端保存自己的 cwd，不创建 Project 或聊天实体。
 - 手机端新建 session 需要完整的 `list/create/dynamic attach` 合同。切换时浏览器关闭旧 attachment 并附着新 `terminal_id`，但不能调用 kill-session；旧 agent 继续运行。
+- 用户明确结束终端是与切换、断线不同的破坏性动作：只结束所选产品受控 tmux session，并从运行终端列表移除；Codex 原生 session 仍由 provider 保存，随后可从历史列表恢复到新的 tmux 终端继续对话。
+- 阶段 17 代码审阅确认：`SessionCatalog` 当前只有 list/create/resume/get，动态终端路由仅接受 GET attach；`Manager` 没有结束方法，手机 session row 也只有切换动作。Codex 历史 list/resume 已实现，因此本阶段不新增 provider 存储集成，只补显式终端结束合同并做组合回归。
+- 删除当前终端后的 UI 不能自动重建 agent，否则“结束”会被立即抵消。若仍有终端则切到一个剩余项；若已清空则关闭 WebSocket、清空当前附着并展示暂无终端，由用户明确新建或从 Codex 历史恢复。
+- 2026-09-22 真实 Serve 探针在 `/Users/huangxinxinyu/Developer/learn/paper` 创建终端，官方 app-server 返回 15 条该 cwd 的 Codex 原生历史；恢复其中一条产生新的独立终端。两个测试终端经同源 DELETE 均返回 204，运行列表回到仅 `prototype`，再次读取仍为 15 条历史，证明结束 tmux 不会删除 provider session。
 - 真实 Serve 验收已创建 `session-9a6b0d6beca8`：它与 `prototype` 同时存活且均为独立 Codex pane；新 session 的 `NO_COLOR` 为 unset，旧 session 保持原环境。重启 Go daemon 后 `GET /api/v1/terminals` 从专用 tmux server 恢复两项，动态 WSS attach 探针通过且探针断开后两个 session 均未结束。
 - Codex CLI 0.155.1 的 app-server `thread/list` 结构化结果包含可选 `name`（用户可见标题）和 `preview`；本机当前目录的历史会话能返回“问候用户”等自动标题。官方文档只承诺 `codex resume` 可搜索并恢复已保存聊天，没有把本地存储文件定义为集成合同，因此不读取或解析 provider 会话文件。
 - 运行中的 Codex 会通过终端标题元数据设置 tmux `#{pane_title}`。实测 `prototype` 为 `问候用户 | code-remote`，尚未开始的新 session 仅为 `code-remote`。Code Remote 可读取 pane title 并去掉与当前 workspace 对应的尾缀作为展示标题；这不解析终端正文，也不把标题误当作任务状态。
@@ -56,6 +62,16 @@
 - OpenAI 官方 Codex CLI 页面明确列出 `/model`（模型与推理强度）、`/status`、`/permissions`、`/review`。手机模型面板直接向已附着的 Codex TUI 发送这些命令；模型可用性及选择 UI 仍由当前 Codex 账号和 CLI 决定。
 - “全部指令”只向 TUI 输入 `/` 而不提交，由 Codex 原生命令菜单继续接管；没有把动态指令列表复制到产品协议。
 - `/init` 会创建或修改 AGENTS.md，未作为一键快捷操作，避免从控制面板触发隐含文件写入。Claude 模式不启用 Codex 指令按钮。
+- 2026-09-21 用户在真实 iPhone 上尝试 `/model` 失败。现有前端自动化只做静态源码断言，既没有模拟点击，也没有证明 WebSocket 实际收到 `/model\r`；此前 Mac 端验证直接向终端触发命令，也未覆盖手机按钮事件。这是当前调查起点，尚未确定根因。
+- 调查开始时 Tailscale Serve 仍代理 `127.0.0.1:8080`，但本机没有 daemon 监听 8080，所有专用 tmux session 的附着数也都是 0。这个状态能解释“当前页面无法交互”，但不能单独解释用户此前已打开页面时的按钮失败；验收需先部署当前构建，再记录完整链路。
+- 输入桥接本身已有 Go 集成测试，但只验证任意 `测试\n` 字节从 WebSocket 到 fake PTY；模型面板测试只搜索 HTML/JavaScript 字符串。现有测试没有执行按钮点击，也没有断言 `/model\r` 到达真实 tmux/Codex。前端发送路径要求 `runtimeContext.agent_id === "codex"` 且 `attachmentID` 非空，否则会静默返回，界面不给失败原因。
+- 390×844 的真实 Chrome 点击已稳定复现：按钮事件成功、WebSocket 保持 attached、发送记录显示 `/model`，但 Codex 提示框只出现未提交的 `/model` 文本。随后通过同一浏览器/xterm 单独派发一个 Enter，原生 “Select Model and Effort” 立即打开。首个异常边界已锁定为“快捷入口把命令文本和 `\r` 合并在同一次 PTY 输入”；Codex 将文本放入 composer，但没有把同批尾随回车当作提交。不是按钮未绑定、网络断开或 tmux 写入失败。
+- 进一步探针表明仅拆成两个立即发送的 WebSocket 帧（0 ms timer）仍会被 PTY/Codex 合并，`/status` 仍停在输入框；延迟 50 ms 后回车会实际提交。第二次探针因前一条未提交文本未被 `tmux send-keys C-u` 清除，实际提交成 `/statusstatus` 并收到 Codex “Unrecognized command”——虽然命令内容污染，这仍证明 50 ms 的独立回车跨过了 Codex 的 burst/paste 判定。需继续验证显式 bracketed-paste 边界能否免除定时等待。
+- 在全新真实 Codex 0.155.1 终端 `session-056afca023d4` 验证了确定性方案：单个输入帧发送 `ESC[200~ + /model + ESC[201~ + CR`，Codex 能识别明确的 bracketed-paste 结束边界并立即打开 “Select Model and Effort”。因此无需依赖 50 ms 魔法延迟；修复应只改变 Codex 原生快捷命令序列的编码。
+- 修复后用 390×844 真实 Chrome 页面点击验收：页面 attached 到 `session-056afca023d4`，点击“打开 Codex 模型选择器”后面板关闭、发送记录出现 `/model`，tmux 同时显示真实模型/推理强度选择器；点击“查看全部原生 / 指令”后也显示 Codex 原生命令菜单。两条原始失败路径均已在浏览器事件层通过。
+- `/status` 探针第一次在退出 `/` 菜单后执行，只按一次 Escape 留下了 `/`，快捷入口追加后形成 `//status` 并被 Codex 当作普通任务；已立即用 Escape 中断，未写文件。这个错误来自测试前置状态不干净，不否定编码修复；后续状态快捷项必须从空 prompt 独立验收，也说明控制面板不能宣称会清除用户已有输入。
+- 从确认空 prompt 后重新独立点击 `/status`，Codex 正常显示原生状态卡片（模型、目录、权限、session 等），没有启动普通任务。至此同一修复序列已覆盖“提交型命令”(`/model`、`/status`)与“不提交菜单”(`/`)。
+- Tailscale Serve 当前可通过 curl 返回已部署的新 `app.js`，其中包含 `nativeCommandSequence` 及 bracketed-paste 边界；headless Chrome 访问该 HTTPS 域名仍复现既知 `ERR_CONNECTION_CLOSED`。iPhone peer 当前在线，但无法从 Mac 代替用户操作 Safari，因此真机最终一步必须由用户刷新后点击确认。
 
 ## 尚未验证
 
@@ -63,6 +79,7 @@
 - Tailscale Serve 的 WebSocket 握手与至少 30 分钟长连接稳定性。
 - Go PTY 桥接、tmux 尺寸同步、退出状态和 daemon 重启恢复。
 - Mac 用户级自动启动、防睡眠操作和直接 tailnet 监听边界。
+- 真实 iPhone Safari 中终端“结束”确认按钮，以及从 paper 历史点击“恢复”后的交互式继续对话。
 
 ## 原型依赖候选
 
@@ -72,6 +89,12 @@
 - 手机打开 Tailscale 后，Mac 能看到在线 iOS peer；真实直连页面与 WebSocket 已建立。目标 Tailscale 版本为 1.102.4，首次执行 Serve 需要 tailnet 管理员通过控制台链接显式启用。
 
 ## 移动端 UI 观察
+
+- 2026-09-24 用户真机截图证实旧页面有 Codex 原生输入栏和网页独立 composer 两处输入，原生栏已能执行指令，用户要求移除后者。截图的 `[1/127]` 是 tmux copy mode；游离白框是 copy mode 的定位光标，并非 Codex 输入光标。浏览器 DOM 中它是失焦的 `xterm-cursor-outline`，而 tmux 在 copy mode 中仍会发出 `?25h`。滑动时让 xterm 失焦并隐藏 outline；再次聚焦通过 tmux `#{pane_in_mode}` 检查后只在回滚中取消 copy mode。隔离 tmux 验证了 pane target `=session:0.0` 和 `send-keys -X -t ... cancel` 的准确参数顺序。
+- 移动端 `touchstart` 可能先触发 xterm 聚焦，再收到 `touchmove`；若聚焦立即取消 copy mode，一次查看历史的滑动会反向跳回实时。浏览器探针先捕获这种失败，再以手势期间暂存聚焦解决：轻点结束才发 `terminal.focus`，产生滚轮的滑动则先 blur 并丢弃待发聚焦。
+
+- 2026-09-24 用户在中文与连续两轮对话恢复后，要求终端字体/配色和屏幕利用率均接近 Ghostty。本机 Ghostty 无自定义配置；其默认深灰背景为 `#282c34`，默认字体参考 JetBrains Mono。打包 Regular/Bold WOFF2 后必须在 xterm 打开前等待字体加载：首次预览若先打开终端再加载字体，xterm 缓存了备用字体的单元格尺寸，出现明显的字符间距错误。调整顺序后，本机窄屏探针从 17 行升到 23 行、61 列；真实 iPhone 尚未复核。
+- 同日用户提供的真机截图里终端回复呈单一白色，尽管同一 tmux pane 的回滚文本已经包含 RGB 前景色与粗体 SGR。真实浏览器 DOM 中这些文字有 xterm 对应 class，却仍计算为白色/400 字重，xterm 创建的三个页内样式表均是 `sheet=false`。原因是 Web CSP 的 `style-src 'self'` 拦截页内样式；先前无 CSP 的静态预览能显示颜色，未覆盖真实服务响应头。只为样式增加 `unsafe-inline` 后，浏览器探针看到样式表生效及绿色/粗体正文；不需要修改 tmux 字节或解析 Markdown。
 
 - 路径面板的目录行只负责逐层浏览，真正切换由列表下方的“在此目录新建对话”触发。真机用户到达目标目录后直接关闭面板，因而仍附着 code-remote；实时 terminal API 同时证明 Yuniverse cwd 本身可创建。问题是确认动作被可滚动列表压到下方且目标反馈不明确，不是后端 cwd 切换失败。
 - 390×844 的真实浏览器渲染显示：当前页面功能优先但视觉层级不足；顶栏只有标题，终端与页面背景几乎没有边界，连接状态不够醒目，底部快捷键为同质灰色按钮且右侧操作需要无提示横向滚动。

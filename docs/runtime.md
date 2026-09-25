@@ -1,6 +1,6 @@
 # 电脑端运行时
 
-状态：Web + Tailscale 运行合同；多终端、目录切换、tmux 保活/恢复与浏览器附着原型已实现，结束终端、创建幂等和电脑重启恢复仍待实现。产品边界见 [product.md](product.md)。
+状态：Web + Tailscale 运行合同；多终端、目录切换、显式结束、tmux 保活/恢复与浏览器附着原型已实现，创建幂等和电脑重启恢复仍待实现。产品边界见 [product.md](product.md)。
 
 ## 本地进程与环境
 
@@ -68,7 +68,13 @@ Daemon 不将 agent 绑定到某个 HTTP 请求或 WebSocket 的取消上下文�
 
 Codex 历史列表通过本机 CLI 的官方 app-server `thread/list` 按浏览器当前终端 cwd 查询，只读取 `id/name/preview/time` 元数据。选择历史项时，Daemon 再次校验 cwd，并以参数数组在同一目录的新 tmux session 中运行 `codex resume <thread_id>`；它不解析 provider 会话文件，也不把历史复制进产品存储。
 
+用户从手机明确结束终端时，Daemon 只接受 catalog 已知的 `terminal_id`，以参数数组精确结束对应 tmux session，成功后从运行列表移除。重复结束已经移除的 ID 是幂等成功；结束失败时保留 catalog 条目供用户重试。该操作不调用 provider 历史删除接口，因此 Codex 原生 session 仍可列出和恢复。
+
 Codex 模型和 slash command 继续由原生 TUI 处理。网页可向当前已附着终端发送 `/model`、`/status`、`/permissions`、`/review`，或只输入 `/` 打开原生命令菜单；不读取或覆盖 Codex 配置，不自动选择模型或权限，也不对其他 agent 声称支持。
+
+网页预组装上述 Codex 快捷指令时，以 bracketed-paste 起止序列界定正文；需要执行的指令在结束序列后追加回车，只打开菜单的 `/` 不追加。不能把正文与回车作为无边界的普通文本批次发送：Codex 0.155.1 的 `/model` 和 0.156.1 的旧 composer 中文指令验收会把这种输入留在原生输入栏而不提交。当前页面已按用户要求移除重复 composer；直接在 xterm 中键入仍按原始字节传递，不覆盖已有原生输入。
+
+终端聚焦时，浏览器发送 `terminal.focus`。Daemon 查询所选终端唯一 pane 的 `#{pane_in_mode}`；仅值为 `1` 时执行 `send-keys -X cancel` 退出 tmux copy mode，普通输入栏和 Codex 菜单不收到额外 Esc。移动端终端滑动会释放 xterm 焦点，避免 copy mode 的定位光标被误看成原生输入光标。键盘占用视口时，页面使用 Safari `visualViewport.height` 调整原生终端可见高度。
 
 建议让退出后的 pane 保留到用户关闭终端，以便展示最终输出和退出码；agent 已退出时显示 `exited`，不能把仍存在的 tmux pane 当作 agent 正在运行。
 
@@ -84,7 +90,7 @@ Codex 模型和 slash command 继续由原生 TUI 处理。网页可向当前已
 | Tailscale 重连 | 浏览器重新建立网络与 WebSocket；电脑进程不依赖手机连接存活 |
 | Daemon 重启 | 专用 tmux server 若仍存活，通过 `prototype` / `session-<12hex>` 名称重新发现终端，不重复创建 |
 | Agent 自己退出 | 保留可见退出结果，不自动重新发送任务 |
-| 用户明确结束终端 | 仅结束指定终端及其宿主任务；不能影响同目录其他终端 |
+| 用户明确结束终端 | 经确认后仅结束指定终端及其宿主任务；不能影响同目录其他终端，也不删除 agent 原生 session |
 | 电脑重启或 tmux 丢失 | 活跃终端无法直接复活；显示终端丢失，后续通过 agent 原生能力恢复历史，不承诺无损续跑 |
 
 Daemon 恢复时以实际 tmux/进程状态核对本地元数据。启动中途失败时记录错误；不能因状态文件中有记录就报告运行成功。
@@ -98,6 +104,8 @@ Daemon 恢复时以实际 tmux/进程状态核对本地元数据。启动中途�
 专用 tmux server 开启 mouse，并将全屏 alternate-screen 下的 `WheelUpPane` 固定进入 copy mode。浏览器只在 TUI 区域把单指垂直手势编码为终端鼠标滚轮序列；这条路径查看 tmux 有界回滚，不改变 agent 输入协议或制造结构化消息。
 
 终端输出按字节传递，不按 WebSocket 分片强行解码 UTF-8；字符与控制序列可能跨分片。尺寸变化修改附着客户端 PTY 的行列数，再由 tmux 传递终端尺寸。
+
+tmux 附着客户端必须以全局 `-u` 选项启动，确保 daemon 在 launchd 的无 locale 环境里仍向浏览器输出 UTF-8。未启用时 tmux 可在发送前把中文替换成下划线，浏览器无法从这些字节恢复原文。
 
 每个终端首版只允许一个可写附着。网络慢时使用有界队列；严重积压时断开显示并重新附着，不能因为浏览器无人消费输出而阻塞 agent，也不能任意丢控制序列后继续显示。
 

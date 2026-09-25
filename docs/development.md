@@ -80,11 +80,12 @@ tailscale serve --bg 8080
 ## 当前实现
 
 - `cmd/daemon`：运行内嵌页面、终端 catalog、HTTP API 与 WebSocket 桥接。
-- `internal/web`：限制监听到 loopback/Tailscale 地址，校验修改 API/WebSocket 同源，提供终端 list/create/dynamic attach 并内嵌 xterm.js。
+- `internal/web`：限制监听到 loopback/Tailscale 地址，校验修改 API/WebSocket 同源，提供终端 list/create/delete/dynamic attach 并内嵌 xterm.js。
+- 移动端终端字体随二进制内嵌：`internal/web/assets/JetBrainsMono-{Regular,Bold}.woff2` 固定于 JetBrains Mono v2.304，许可证在 `third_party/jetbrainsmono/OFL.txt`；无需在线字体服务。
 - `internal/directory`：展开 home shorthand、规范化和验证 cwd，并提供有界的直接子目录浏览。
-- `internal/terminal`：以参数数组调用专用 tmux server，在所选 cwd 恢复/创建独立 session 并保存 cwd 元数据，再通过 PTY 临时附着；同一终端的新附着替换旧附着而不结束 agent。
+- `internal/terminal`：以参数数组调用专用 tmux server，在所选 cwd 恢复/创建/明确结束独立 session 并保存 cwd 元数据，再通过 PTY 临时附着；同一终端的新附着替换旧附着而不结束 agent。
 - `internal/codex`：通过本机 Codex 官方 app-server 的 `thread/list` 读取所选 cwd 的原生名称与预览；不解析 `CODEX_HOME` 中的会话文件。
 - `internal/protocol`：旧 v1 envelope 类型；需按 Web 协议调整。
 - `cmd/relay`：被取代的公网 Relay 占位入口，不属于当前首版。
 
-当前实现仍是验证原型；多个 cwd 的多终端与 daemon 重启恢复已完成自动化验证，路径面板及 Codex `/model` 等原生指令入口已接入。结束终端、创建幂等、Serve 长连接与完整安全验收尚未完成。下一步严格按 [validation.md](validation.md) 在真实 iPhone Safari 中验证。
+当前实现仍是验证原型；多个 cwd 的多终端、显式结束与 daemon 重启恢复已完成自动化验证，路径面板及 Codex 历史恢复、`/model` 等原生指令入口已接入。创建幂等、结束/恢复真机交互、Serve 长连接与完整安全验收尚未完成。下一步严格按 [validation.md](validation.md) 在真实 iPhone Safari 中验证。

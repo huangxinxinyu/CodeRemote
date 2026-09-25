@@ -1,5 +1,61 @@
 # 进度
 
+## 2026-09-24
+
+- 用户确认单一原生输入已在真实 iPhone Safari 可用，阶段 21 完成；`/model` 已能打开，用户确认可用手机键盘操作原生选择器，决定暂不增加触摸选择层。
+
+- 用户新截图指出 tmux copy mode 回滚光标脱离 Codex 原生输入栏，且页面有两个输入位置；用户确认原生栏可执行指令，要求移除网页 composer。隔离 tmux 与浏览器 DOM 定位：`[1/127]` 表示 copy mode，白框是其定位光标；失焦时隐藏 outline，聚焦时只在 `pane_in_mode=1` 时退出回滚。隔离 tmux 还发现必须精确用 `=session:0.0` 和 `send-keys -X -t ... cancel`，已据此修正服务端测试与实现。
+- 已移除重复 composer、无用附件占位与页内“已发送”列表；本机浏览器探针从 23 行增至 28 行，原生输入聚焦、触摸滑动释放焦点和模拟键盘可见高度通过。服务端 WebSocket/Manager 定向测试通过；待全量检查、构建和真机刷新验证。
+- 补充浏览器触控时序 RED/GREEN：`touchstart` 后 xterm 先聚焦、随后 `touchmove` 的滑动原本会提前发送 `terminal.focus`；现在仅轻点结束后发送聚焦，真正滑动保持 tmux 历史模式。浏览器轻点和滑动探针分别通过。
+- `make check`、前端语法和差异检查通过，构建并重启私有 Serve 后端；线上 `/healthz`、页面和资源均返回 200，页面已无重复输入框，四个原有 Codex pane 存活。已请求用户刷新 iPhone Safari 验证回滚光标及原生输入。
+
+- Ghostty 风格移动端终端已完成本机实现：内嵌 JetBrains Mono Regular/Bold 与 OFL，采用本机 Ghostty 默认深灰 ANSI 色板；移动端压缩周边控件，让原生 TUI 占用剩余高度。首次预览发现字体晚于 xterm 初始化导致字符过疏，改为先等待字体加载后正常。窄屏探针从 17 行提升到 23 行、61 列，截图检查通过；`make check`、JavaScript 语法和连续两轮提交探针通过。待部署与真实 iPhone Safari 复核。
+- `make build` 后重启当前 launchd daemon；localhost 与私有 Serve `/healthz` 返回 200，JS/CSS 与两份 WOFF2 均已由新进程服务。当前受控终端列表仍可读取；已请求用户在真实 iPhone Safari 刷新确认字体和键盘布局。
+- 用户真机截图指出终端正文仍没有颜色或粗体。以同一 Codex pane 的 tmux ANSI 控制码、浏览器 xterm class 和计算样式逐层定位到 CSP：`style-src 'self'` 阻止 xterm 的运行时页内样式表。浏览器级探针 RED 时颜色全白/字重 400，修复后 GREEN 显示绿色代码路径/字重 700；`make check`、构建和私有 Serve 响应检查通过，已重启 daemon 并请求 iPhone 刷新确认。
+- 用户在真实 iPhone Safari 刷新后确认终端视觉“已经非常好”；阶段 20 视觉工作完成。键盘弹起/横屏等通用交互项继续在原验收表跟踪。
+
+- P0 插队：用户确认中文显示恢复，但两个新 Codex 对话都只回应首轮“你好”。两个真实 tmux pane 的第二轮中文任务停在原生输入框；对其中一项单独发送 Enter 后 Codex 立即开始执行，证明文字已到达但同批回车未提交。
+- 浏览器点击探针 RED：连续两次点击“运行”分别发出短问候和较长中文任务，两次均缺少 paste 边界；GREEN：普通 Codex composer 复用已验证的结束边界，两次点击均捕获到正确序列。`make check`、JS 语法、构建和私有 Serve 静态资源检查通过；新 daemon 已重启，四个原有 Codex pane 保留。待 iPhone Safari 刷新后真机复验。
+- 原先 Ghostty 风格视觉任务按用户要求让位于 P0；已记录用户同时希望改善终端字体/配色与可见高度。本机 Ghostty 为默认配置，Chrome 窄屏基线终端为 17 行；视觉代码尚未改动，待 P0 真机验收后继续。
+- 用户确认新版 iPhone Safari 在同一 Codex 对话里连续两轮均正常回复，阶段 19 完成，恢复 Ghostty 风格视觉任务。
+- 用户截图显示 Codex 原生 TUI 中中文变成连续横线；用户确认退出 tmux copy mode 后仍如此。tmux `capture-pane` 保留正确中文，排除 Codex 生成内容缺失；运行中的 launchd daemon 没有 UTF-8 locale。
+- 独立 tmux PTY 探针在无 locale 时复现 `Codex/Claude ______ TUI`，加 tmux 全局 `-u` 后收到原始中文 UTF-8。先将 `-u` 写入附着命令回归断言并观察失败，再实施单一修复；`make check` 通过。
+- `make build` 后已重启现有临时 launchd job；新 daemon 运行中，localhost 与 tailnet-only Serve `/healthz` 均返回 200，原有两个 Codex tmux pane 仍在。等待真实 iPhone Safari 刷新确认中文。
+
+## 2026-09-22
+
+- 用户要求先恢复服务并清理现有 11 个终端，再实现手机端终端清理与电脑原生 session 恢复。已逐个核对并结束 `code-remote` 专用 tmux server 中的 11 个受控 session；未触碰普通 tmux。
+- 清理脚本在最后一个 tmux session 结束、server 正常退出时提前停止，未执行同一脚本中的最终 daemon 重启；随后单独确认旧 daemon 和 tmux server 均已退出，再完成重启。localhost API 与 Tailscale Serve `/healthz` 均通过，终端 API 只保留新的逻辑 `prototype` 入口。
+- 阶段 17 启动：按 TDD 实现显式 DELETE 生命周期和手机确认交互；Codex 原生历史继续作为恢复事实源，不把终端删除扩展成 provider 历史删除。
+- 当前工作区基线 `go mod download` 与 `make check` 全部通过；现有未提交的 Codex bracketed-paste 修复保持不动，可以进入阶段 17 的 RED 测试。
+- Catalog 删除合同进入 RED：新测试要求只结束指定受控 session、保留其他 session，并让重复删除幂等；当前因 `Catalog.Delete` 尚不存在而按预期编译失败。
+- Catalog GREEN：`Delete` 只对 catalog 已知 ID 发出参数数组形式的精确 `tmux kill-session`，成功后才移除内存条目；重复删除不再次触碰 tmux。定向测试通过。
+- HTTP 删除合同进入 RED：同源 `DELETE /api/v1/terminals/{id}` 期望 204，跨源请求不得到达 catalog；现有动态路由只允许 GET attach，定向测试按预期得到 405。
+- HTTP GREEN：`SessionCatalog` 暴露显式 Delete，动态终端路由区分 GET attach 与 DELETE terminal；同源删除返回 204，跨源删除返回 403，原有未知 attach 行为保持。定向测试通过。
+- 手机交互进入 RED：测试要求每个运行终端具有明确结束按钮、原生确认、DELETE 请求、列表移除和清空后的无活动终端状态，并明确不会删除 Codex 历史；现有页面全部缺失，定向测试按预期失败。
+- 手机交互首次 GREEN 后复核发现失败提示会被 `finally` 的无条件列表重绘立即清除。根因是错误仅作为临时 DOM 节点、没有进入渲染状态；补充失败测试后用 `sessionListError` 作为单一状态源，定向测试与 JavaScript 语法检查重新通过。
+- 无终端状态复核又发现 `updateRuntimeContext` 会把“暂无终端”覆盖为“新对话/prototype”。先补失败断言，再让会话标题和状态面板显式依据空 `terminal_id` 显示“暂无终端”；定向测试通过。
+- 组合回归通过：同源删除运行终端后，Codex 原生 history 仍可按 cwd 列出，选择后继续走 `codex resume` 创建新终端。另用独立临时 tmux socket 实测 `kill-session -t =session` 精确目标有效，未触碰当前 `code-remote` server。
+- 全量 `make check`、JavaScript 语法与 diff whitespace 检查通过，新 daemon 已构建。工具 shell 下的 `nohup` 子进程会被宿主回收，因此本次手动部署改用当前 macOS 登录会话内的临时 `launchctl` job `dev.coderemote.manual`；它不是开机自启配置。localhost 与 Serve 健康检查通过。
+- 真实 Serve API 探针在 paper cwd 创建 `session-b7864b0aa5b5`，读取到 15 条 Codex 原生历史，并恢复一条到 `session-5633e4d106ce`。两个测试终端均通过 DELETE 返回 204；运行列表只剩 `prototype`，删除后 paper 历史仍为 15 条。测试终端已清理，无测试 agent 残留。
+- 最终复验通过：`make check`、`go test -race ./internal/terminal ./internal/web`、JavaScript 语法、diff whitespace、localhost/Serve 健康检查及线上静态资源检查均正常。新版本由临时 launchd job 保持运行，等待用户在真实 iPhone Safari 刷新后验证“结束”和 paper 历史“恢复”按钮。
+
+## 2026-09-21
+
+- 用户报告真实 iPhone 上 `/model` 交互失败，要求完成交互验收。阶段 16 启动；先撤回“实现即支持”的判断，按 Safari 点击 → 前端发送 → WebSocket → daemon → tmux → Codex TUI 的边界逐层取证。
+- 初始环境检查发现 Serve 配置存在但 8080 无 daemon 监听，tmux 中 11 个终端均未附着。先恢复当前构建的 localhost daemon，随后再做可观测的端到端命令探针。
+- 已完成第一轮数据流检查：按钮调用 `sendNativeCommand`，经 attachment ID 封装为 `terminal.input`，daemon 解码后写 PTY。当前测试覆盖传输层但未覆盖真实按钮事件；另外发送前置条件失败会静默无反馈，是验收可观测性缺口。
+- 当前构建已在 localhost 启动，390×844 的真实 Chrome 页面成功建立到 `prototype` 的 tmux 附着（61×17）；现在进入按钮点击复现。
+- 完整点击复现已定位根因：`sendNativeCommand("/model")` 的 `/model\r` 同批输入只把文本放进 Codex composer；同一页面再发送独立 Enter 后原生模型选择器立刻出现。下一步以该复现补测试并把“文本输入”和“提交键”拆成可验证的顺序。
+- 最小延时实验：文本与 Enter 拆帧但 0 ms 仍失败，50 ms 回车可触发 Codex 提交。正在验证显式 bracketed-paste 结束标记能否提供无需猜测时长的输入边界。
+- 全新 Codex 终端上的 bracketed-paste 探针通过：`ESC[200~/modelESC[201~CR` 单帧即可打开原生模型选择器。确定采用显式输入边界修复 Codex 快捷命令，进入 RED 测试。
+- RED 已确认：新增回归合同要求原生快捷命令用 bracketed-paste 边界编码；现有实现因缺少编码函数及调用而按预期失败，证明测试能捕获本次缺陷。
+- GREEN 已确认：`nativeCommandSequence` 现在生成 bracketed-paste 文本边界，并在需要提交时追加 CR；定向 Go 测试与 JavaScript 语法检查通过。修复后的 daemon 已重新构建并监听 localhost，准备浏览器点击复验。
+- 修复后浏览器点击复验通过 `/model` 与原生 `/` 菜单：390×844 页面、WebSocket、PTY、tmux、Codex TUI 全链路均有对应证据。一次串联的 `/status` 用例因残留 `/` 变成普通任务，已立即中断；将从空 prompt 重新独立验证。
+- 空 prompt 下独立点击 `/status` 已通过，Codex 显示真实原生状态卡片。浏览器层的三类交互复验完成，下一步跑全量回归并同步协议/验证文档；真实 iPhone 仍需刷新后复验，不能用 Chrome 结果冒充 Safari 结果。
+- 全量 `make check`、JavaScript 语法、diff whitespace 检查通过；Serve HTTPS 已返回修复后的静态资源。架构、决策、运行时、协议与验收记录已同步。iPhone peer 在线且修复后的 daemon 正在运行，阶段 16 只剩用户在 Safari 刷新后的实际点击确认。
+- 已结束并删除本轮专门创建的测试 tmux 终端 `session-056afca023d4`，避免污染用户终端列表；该测试终端本身不可恢复，但 Codex 原生历史仍由 provider 管理。headless Chrome 进程也已停止，修复后的 daemon 保持运行供 iPhone 复验。
+
 ## 2026-09-20
 
 - 用户反馈路径面板逐层到达 Yuniverse 后关闭面板，顶栏仍显示 code-remote。实时 API 证明 Yuniverse 终端 `session-52477ab1b578` 已存在；源码确认目录行点击只调用 browse，真正的 create/switch 按钮位于可滚动列表之后。阶段 15 启动，修复确认动作在 iPhone 上不易发现的问题。

@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-阶段 13 与 14 已完成：路径切换、Yuniverse 恢复、Codex 原生模型选择器及 `/` 指令入口已实现、验证并推送；阶段 12 的真实 iPhone 最终交互验收仍待完成。
+阶段 17 进行中：实现手机端结束受控终端，并验证结束后仍可发现和恢复电脑上的 Codex 原生 session 继续对话；不删除 provider 历史，不建立聊天数据库。
 
 ## 阶段
 
@@ -115,6 +115,56 @@
 - [x] 让确认按钮明确显示目标目录，避免关闭面板被误解为完成切换。
 - [x] 完成自动化回归、重新部署、真机可用性说明、提交并推送。
 
+### 16. Codex 原生指令真机交互修复
+- **Status:** complete
+- [x] 在当前部署和真实 Codex 终端稳定复现 `/model` 失败。
+- [x] 逐层核对浏览器点击、前端 WebSocket 帧、daemon 输入桥接、tmux 与 Codex TUI，定位首个异常边界。
+- [x] 先补能复现根因的失败测试，再实施单一修复。
+- [x] 完成自动化回归、Mac 端真实 TUI 验收及 iPhone Safari 复验；用户确认手机可打开 `/model`，并可用键盘操作原生选择器。
+- [x] 将实际结果同步到验证记录，不再把未完成的手机交互写成已支持。
+
+### 17. 手机端终端清理与原生 session 恢复
+- **Status:** in_progress
+- [x] 手动结束现有 11 个产品专用 tmux session，并重启 daemon 验证 Serve 健康。
+- [x] 先补失败测试，定义按 ID 结束受控终端、未知终端幂等及不影响其他终端的合同。
+- [x] 实现 `DELETE /api/v1/terminals/{id}` 与 catalog 删除，并保持页面离开/断线不结束 agent。
+- [x] 在手机对话面板增加明确的结束按钮、二次确认与当前终端删除后的安全切换。
+- [x] 验证 Codex 原生历史仍可按 cwd 发现，并可恢复到新终端继续对话。
+- [x] 更新产品、架构、决策、运行时、协议与验收记录，完成全量回归和真实运行探针。
+- [ ] 在真实 iPhone Safari 点击“结束”，并从 paper 的 Codex 历史点“恢复”继续对话。
+
+### 18. iPhone 中文输出横线修复
+- **Status:** complete
+- [x] 对照用户截图、tmux 原始 pane 与实际 launchd locale，定位到附着客户端输出编码。
+- [x] 隔离 tmux PTY 复现无 locale 时中文变下划线，并验证全局 `-u` 恢复中文 UTF-8。
+- [x] 先补失败测试，再给 tmux 附着命令加 `-u`，通过全量自动化回归。
+- [x] 部署新版 daemon 后由用户在真实 iPhone Safari 确认中文正常显示。
+
+### 19. Codex 第二轮普通指令未提交 P0
+- **Status:** complete
+- [x] 从两个真实 tmux pane 确认第二轮中文任务到达 Codex 但未提交，并以单独 Enter 验证异常边界。
+- [x] 浏览器点击探针先观察失败，再验证 Codex composer 复用 bracketed-paste 边界后两轮输入均正确编码。
+- [x] 完成全量检查、构建与私有 Serve 部署；原有 Codex pane 保留。
+- [x] 用户在 iPhone Safari 连续两轮真机复验正常。
+
+### 20. Ghostty 风格移动端终端视觉
+- **Status:** complete
+- [x] 用户明确希望同时改善终端文字/配色和占屏布局；本机 Ghostty 使用默认配置。
+- [x] 基线浏览器探针测得当前窄屏终端约 17 行、背景为深蓝色。
+- [x] 内嵌 JetBrains Mono 字体与许可证，调整终端调色板、行距、字体加载时机和移动端布局。
+- [x] 本机窄屏浏览器截图/布局探针复核文字间距、背景与 23 行终端；全量检查通过。
+- [x] 构建并重启私有 Serve 后端；健康检查、前端资源和 WOFF2 字体均返回 200。
+- [x] 根据真机全白截图追到 CSP 阻止 xterm 动态样式；浏览器探针先失败，修复后确认 ANSI 颜色与粗体恢复并重新部署。
+- [x] 用户刷新真实 iPhone Safari 后确认终端视觉“已经非常好”；键盘、横屏等通用交互继续按真机验收表单独覆盖。
+
+### 21. 单一原生输入与光标跟随
+- **Status:** complete
+- [x] 真机截图和 tmux 状态确认游离光标来自 copy mode；用户要求移除网页重复 composer，保留已能执行指令的 Codex 原生输入栏。
+- [x] 先补失败用例，修复聚焦时只退出真实 copy mode；隔离 tmux 验证 pane target 与命令参数。
+- [x] 移除 composer 和重复“已发送”记录；本机浏览器验证单一原生输入、触摸失焦和模拟键盘高度，终端由 23 行增至 28 行。
+- [x] 全量检查、构建和私有 Serve 部署；页面无重复输入框，原有 tmux pane 保留。
+- [x] 用户在真实 iPhone Safari 确认单一原生输入已可使用。
+
 ## 当前产品约束
 
 - iPhone 与 Mac 均连接同一 tailnet；服务不开放普通 LAN 或公网。
@@ -127,12 +177,17 @@
 
 ## 已知待办
 
-- 新版控制台 UI 需要在真实 iPhone Safari 检查键盘弹起、多行 composer、面板和触控尺寸。
-- 结束终端与创建幂等尚未实现；路径和 Codex 原生指令已接入，agent 选择仍只有显示上下文。
+- 新版控制台 UI 需要在真实 iPhone Safari 检查原生输入、键盘弹起、面板和触控尺寸。
+- 创建幂等尚未实现；结束终端、路径、Codex 历史恢复与原生指令已接入，agent 选择仍只有显示上下文。
 - 需要完成蜂窝网络、中文输入、重连及至少 30 分钟长连接验收。
 
 ## 错误记录
 
+- 诊断命令在 zsh 中把未引用的 `=prototype` 当作命令路径展开，导致 `prototype not found`；后续 tmux 精确 target 一律用引号包住。
+- 0 ms/50 ms 提交探针对同一个 Codex prompt 连续写入；`tmux send-keys C-u` 未清除 TUI 输入，导致第二次实际提交 `/statusstatus`。结果只用于确认延迟回车被识别，后续每个探针先通过附着通道发送 Ctrl+C 并捕获空 prompt，避免跨用例污染。
+- `/` 菜单验收后只发送一次 Escape，Codex 关闭菜单但保留 `/`；随后 `/status` 快捷入口组成 `//status` 并启动了普通 agent 任务。已立即中断且任务只读取仓库状态，未产生额外文件修改。后续每个快捷命令用独立空 prompt，不串联复用菜单状态。
+- Mac 上的 headless Chrome 通过 Serve HTTPS 域名复验仍得到仓库已记录的 `ERR_CONNECTION_CLOSED`；同一时刻 curl 可从 Serve 读取含修复代码的资源，故不把 headless 特例当成 Safari 结果，最终仍由在线 iPhone Safari 点击验收。
+- 用户在真实 iPhone 上尝试 `/model` 失败；现有测试只断言页面包含按钮和 JavaScript 字符串，Mac 端探针也未覆盖 Safari 点击到 TUI 的完整链路，因此阶段 14 的“完成”不能替代真机验收。
 - 真实 Yuniverse 创建探针发现 tmux `set-option -t` 不接受 catalog 使用的 `=session-id` target，session 已创建但 cwd 元数据记录失败，HTTP 返回 500；fake runner 原先无条件接受命令，现补真实 target 语义回归测试后修复。诊断命令还误用了 zsh 只读变量 `status`，后续不再以该名称保存退出码。
 - 阶段进度批量补丁首次引用了 `docs/decisions.md` 中才有的相似句子，导致整份补丁校验失败且未落盘；重新按各文件实际标题拆分更新。
 - 目录解析首轮测试发现裸 `~` 被拼成 `$HOME/~`；将裸 home 与 `~/子路径` 分支处理，继续保留规范化与存在性检查。
