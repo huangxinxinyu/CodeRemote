@@ -40,3 +40,6 @@ tmp/
 
 # Local agent planning and scratch state
 .planning/
+/task_plan.md
+/findings.md
+/progress.md
