@@ -178,6 +178,56 @@ func TestCatalogCreatesIndependentAgentSession(t *testing.T) {
 	}
 }
 
+func TestCatalogDeletesOnlySelectedSessionIdempotently(t *testing.T) {
+	t.Parallel()
+
+	runner := &catalogRunner{
+		sessions: map[string]bool{
+			"prototype":            true,
+			"session-a1b2c3d4e5f6": true,
+		},
+		listOutput: "prototype\t1789959000\nsession-a1b2c3d4e5f6\t1789959100\n",
+	}
+	catalog, err := NewCatalog(context.Background(), CatalogConfig{
+		TmuxPath:           "tmux",
+		SocketName:         "code-remote",
+		InitialSessionName: "prototype",
+		AgentID:            "codex",
+		AgentPath:          "/usr/local/bin/codex",
+		WorkingDir:         "/tmp/project",
+	}, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := catalog.Delete(context.Background(), "session-a1b2c3d4e5f6"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := catalog.Get("session-a1b2c3d4e5f6"); ok {
+		t.Fatal("deleted session remains attachable")
+	}
+	if _, ok := catalog.Get("prototype"); !ok {
+		t.Fatal("deleting one session removed another session")
+	}
+	if err := catalog.Delete(context.Background(), "session-a1b2c3d4e5f6"); err != nil {
+		t.Fatalf("repeated delete returned %v, want idempotent success", err)
+	}
+
+	var killCommands []recordedCommand
+	for _, command := range runner.commands {
+		if slices.Contains(command.args, "kill-session") {
+			killCommands = append(killCommands, command)
+		}
+	}
+	if len(killCommands) != 1 {
+		t.Fatalf("kill commands = %#v, want one exact tmux deletion", killCommands)
+	}
+	want := []string{"-L", "code-remote", "-f", "/dev/null", "kill-session", "-t", "=session-a1b2c3d4e5f6"}
+	if !slices.Equal(killCommands[0].args, want) {
+		t.Fatalf("kill args = %#v, want %#v", killCommands[0].args, want)
+	}
+}
+
 func TestCatalogCreatesSessionInSelectedWorkingDirectory(t *testing.T) {
 	t.Parallel()
 

@@ -25,6 +25,8 @@ type fakeSessionCatalog struct {
 	resumed                terminal.Info
 	resumeID               string
 	resumeWorkingDirectory string
+	deletedIDs             []string
+	deleteErr              error
 }
 
 func (catalog *fakeSessionCatalog) List() []terminal.Info {
@@ -159,6 +161,11 @@ func (catalog *fakeSessionCatalog) Get(id string) (TerminalSession, bool) {
 	return session, ok
 }
 
+func (catalog *fakeSessionCatalog) Delete(_ context.Context, id string) error {
+	catalog.deletedIDs = append(catalog.deletedIDs, id)
+	return catalog.deleteErr
+}
+
 type fakeCodexHistory struct {
 	threads          []codex.Thread
 	workingDirectory string
@@ -261,7 +268,36 @@ func TestSessionAPIRejectsCrossOriginCreateAndUnknownAttach(t *testing.T) {
 	}
 }
 
-func TestCodexHistoryAPIListsNativeNamesAndResumesSelectedThread(t *testing.T) {
+func TestSessionAPIDeletesSelectedTerminalAndRejectsCrossOrigin(t *testing.T) {
+	t.Parallel()
+
+	catalog := &fakeSessionCatalog{sessions: map[string]TerminalSession{}}
+	handler := NewHandlerWithSessions(catalog, RuntimeContext{TerminalID: "prototype"})
+
+	request := httptest.NewRequest(http.MethodDelete, "http://example.com/api/v1/terminals/session-a1b2c3d4e5f6", nil)
+	request.Header.Set("Origin", "http://example.com")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("DELETE terminal status = %d, want %d", response.Code, http.StatusNoContent)
+	}
+	if len(catalog.deletedIDs) != 1 || catalog.deletedIDs[0] != "session-a1b2c3d4e5f6" {
+		t.Fatalf("deleted IDs = %#v, want selected terminal", catalog.deletedIDs)
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, "http://example.com/api/v1/terminals/prototype", nil)
+	request.Header.Set("Origin", "https://evil.example")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin DELETE status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+	if len(catalog.deletedIDs) != 1 {
+		t.Fatalf("cross-origin DELETE reached catalog: %#v", catalog.deletedIDs)
+	}
+}
+
+func TestCodexHistoryRemainsAvailableAfterTerminalDeletionAndResumesSelectedThread(t *testing.T) {
 	t.Parallel()
 
 	threadID := "019abcde-1234-7000-8000-123456789abc"
@@ -280,6 +316,20 @@ func TestCodexHistoryAPIListsNativeNamesAndResumesSelectedThread(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	workingDirectory := "/tmp/Yuniverse"
+	deleteRequest, err := http.NewRequest(http.MethodDelete, server.URL+"/api/v1/terminals/prototype", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteRequest.Header.Set("Origin", server.URL)
+	deleteResponse, err := http.DefaultClient.Do(deleteRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer deleteResponse.Body.Close()
+	if deleteResponse.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE terminal status = %d, want %d", deleteResponse.StatusCode, http.StatusNoContent)
+	}
+
 	response, err := http.Get(server.URL + "/api/v1/codex/threads?working_directory=" + url.QueryEscape(workingDirectory))
 	if err != nil {
 		t.Fatal(err)

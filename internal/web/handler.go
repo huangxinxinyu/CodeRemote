@@ -37,6 +37,7 @@ type SessionCatalog interface {
 	CreateInDirectory(context.Context, string, uint16, uint16) (terminalpkg.Info, error)
 	ResumeInDirectory(context.Context, string, string, string, uint16, uint16) (terminalpkg.Info, error)
 	Get(string) (TerminalSession, bool)
+	Delete(context.Context, string) error
 }
 
 // CodexHistory is the provider-native, read-only history surface.
@@ -212,22 +213,37 @@ func newHandler(attach http.Handler, catalog SessionCatalog, history CodexHistor
 			})
 		}
 		mux.HandleFunc("/api/v1/terminals/", func(response http.ResponseWriter, request *http.Request) {
-			if request.Method != http.MethodGet {
-				response.WriteHeader(http.StatusMethodNotAllowed)
-				return
-			}
 			suffix := strings.TrimPrefix(request.URL.Path, "/api/v1/terminals/")
 			parts := strings.Split(suffix, "/")
-			if len(parts) != 2 || parts[0] == "" || parts[1] != "attach" {
-				http.NotFound(response, request)
-				return
+			switch request.Method {
+			case http.MethodDelete:
+				if !SameOrigin(request) {
+					http.Error(response, "request origin is not allowed", http.StatusForbidden)
+					return
+				}
+				if len(parts) != 1 || parts[0] == "" {
+					http.NotFound(response, request)
+					return
+				}
+				if err := catalog.Delete(request.Context(), parts[0]); err != nil {
+					http.Error(response, "end terminal session", http.StatusInternalServerError)
+					return
+				}
+				response.WriteHeader(http.StatusNoContent)
+			case http.MethodGet:
+				if len(parts) != 2 || parts[0] == "" || parts[1] != "attach" {
+					http.NotFound(response, request)
+					return
+				}
+				session, ok := catalog.Get(parts[0])
+				if !ok {
+					http.NotFound(response, request)
+					return
+				}
+				NewAttachHandler(session).ServeHTTP(response, request)
+			default:
+				response.WriteHeader(http.StatusMethodNotAllowed)
 			}
-			session, ok := catalog.Get(parts[0])
-			if !ok {
-				http.NotFound(response, request)
-				return
-			}
-			NewAttachHandler(session).ServeHTTP(response, request)
 		})
 	}
 	mux.HandleFunc("/healthz", func(response http.ResponseWriter, request *http.Request) {

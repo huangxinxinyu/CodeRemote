@@ -198,6 +198,25 @@ func (catalog *Catalog) Get(id string) (Session, bool) {
 	return manager, ok
 }
 
+// Delete ends one product-managed tmux session and removes it from the live
+// catalog. Repeating the same deletion is safe and does not target arbitrary
+// sessions outside this catalog.
+func (catalog *Catalog) Delete(ctx context.Context, id string) error {
+	catalog.mu.Lock()
+	defer catalog.mu.Unlock()
+	if _, ok := catalog.sessions[id]; !ok {
+		return nil
+	}
+
+	args := []string{"-L", catalog.config.SocketName, "-f", "/dev/null", "kill-session", "-t", "=" + id}
+	if err := catalog.runner.Run(ctx, catalog.config.TmuxPath, args...); err != nil {
+		return fmt.Errorf("end terminal session %q: %w", id, err)
+	}
+	delete(catalog.sessions, id)
+	delete(catalog.infos, id)
+	return nil
+}
+
 // Create starts and registers a new independent agent session.
 func (catalog *Catalog) Create(ctx context.Context, cols, rows uint16) (Info, error) {
 	return catalog.CreateInDirectory(ctx, catalog.config.WorkingDir, cols, rows)
