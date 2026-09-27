@@ -52,7 +52,7 @@ func TestCatalogRecoversOnlyCodeRemoteSessions(t *testing.T) {
 
 	runner := &catalogRunner{
 		sessions:   map[string]bool{"prototype": true, "session-a1b2c3d4e5f6": true},
-		listOutput: "prototype\t1789959000\nsession-a1b2c3d4e5f6\t1789959100\nforeign\t1789959200\n",
+		listOutput: "prototype|1789959000\nsession-a1b2c3d4e5f6|1789959100\nforeign|1789959200\n",
 	}
 	catalog, err := NewCatalog(context.Background(), CatalogConfig{
 		TmuxPath:           "tmux",
@@ -81,12 +81,46 @@ func TestCatalogRecoversOnlyCodeRemoteSessions(t *testing.T) {
 	}
 }
 
+func TestCatalogRecoversSessionsWithoutUTF8Locale(t *testing.T) {
+	t.Parallel()
+
+	runner := &catalogRunner{
+		sessions:   map[string]bool{"prototype": true, "session-a1b2c3d4e5f6": true},
+		listOutput: "prototype|1789959000|\nsession-a1b2c3d4e5f6|1789959100|/tmp/paper|notes\n",
+		paneOutput: "session-a1b2c3d4e5f6|读论文 | paper\n",
+	}
+	catalog, err := NewCatalog(context.Background(), CatalogConfig{
+		TmuxPath:           "tmux",
+		SocketName:         "code-remote",
+		InitialSessionName: "prototype",
+		AgentID:            "codex",
+		AgentPath:          "/usr/local/bin/codex",
+		WorkingDir:         "/tmp/project",
+	}, runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	infos := catalog.List()
+	if len(infos) != 2 {
+		t.Fatalf("List() returned %d sessions, want 2: %#v", len(infos), infos)
+	}
+	for _, info := range infos {
+		if info.ID == "session-a1b2c3d4e5f6" {
+			if info.WorkingDirectory != "/tmp/paper|notes" || info.Title != "读论文 | paper" {
+				t.Fatalf("recovered session = %#v", info)
+			}
+			return
+		}
+	}
+	t.Fatal("managed session was not recovered")
+}
+
 func TestCatalogRefreshesNativePaneTitleWhenListing(t *testing.T) {
 	t.Parallel()
 
 	runner := &catalogRunner{
 		sessions:   map[string]bool{"prototype": true},
-		listOutput: "prototype\t1789959000\n",
+		listOutput: "prototype|1789959000\n",
 	}
 	catalog, err := NewCatalog(context.Background(), CatalogConfig{
 		TmuxPath:           "tmux",
@@ -100,7 +134,7 @@ func TestCatalogRefreshesNativePaneTitleWhenListing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runner.paneOutput = "prototype\t问候用户 | code-remote\n"
+	runner.paneOutput = "prototype|问候用户 | code-remote\n"
 	infos := catalog.List()
 	if len(infos) != 1 {
 		t.Fatalf("List() returned %d sessions, want 1", len(infos))
@@ -131,7 +165,7 @@ func TestCatalogCreatesIndependentAgentSession(t *testing.T) {
 	}
 	runner := &catalogRunner{
 		sessions:   map[string]bool{"prototype": true},
-		listOutput: "prototype\t1789959000\n",
+		listOutput: "prototype|1789959000\n",
 	}
 	catalog, err := NewCatalog(context.Background(), CatalogConfig{
 		TmuxPath:           "tmux",
@@ -186,7 +220,7 @@ func TestCatalogDeletesOnlySelectedSessionIdempotently(t *testing.T) {
 			"prototype":            true,
 			"session-a1b2c3d4e5f6": true,
 		},
-		listOutput: "prototype\t1789959000\nsession-a1b2c3d4e5f6\t1789959100\n",
+		listOutput: "prototype|1789959000\nsession-a1b2c3d4e5f6|1789959100\n",
 	}
 	catalog, err := NewCatalog(context.Background(), CatalogConfig{
 		TmuxPath:           "tmux",
@@ -311,7 +345,7 @@ func TestCatalogRecoversSessionWorkingDirectoryMetadata(t *testing.T) {
 	recoveredDirectory := t.TempDir()
 	runner := &catalogRunner{
 		sessions:   map[string]bool{"prototype": true, "session-a1b2c3d4e5f6": true},
-		listOutput: "prototype\t1789959000\t\nsession-a1b2c3d4e5f6\t1789959100\t" + recoveredDirectory + "\n",
+		listOutput: "prototype|1789959000|\nsession-a1b2c3d4e5f6|1789959100|" + recoveredDirectory + "\n",
 	}
 	catalog, err := NewCatalog(context.Background(), CatalogConfig{
 		TmuxPath:           "tmux",

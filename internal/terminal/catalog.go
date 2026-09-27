@@ -103,13 +103,15 @@ func newCatalogManagerWithArgs(config CatalogConfig, sessionID string, agentArgs
 }
 
 func (catalog *Catalog) recover(ctx context.Context) {
-	args := []string{"-L", catalog.config.SocketName, "-f", "/dev/null", "list-sessions", "-F", "#{session_name}\t#{session_created}\t#{@code-remote-cwd}"}
+	// tmux replaces tabs in -F output with underscores under launchd's C locale.
+	// IDs and timestamps cannot contain '|'; SplitN preserves it in cwd values.
+	args := []string{"-L", catalog.config.SocketName, "-f", "/dev/null", "list-sessions", "-F", "#{session_name}|#{session_created}|#{@code-remote-cwd}"}
 	output, err := catalog.runner.Output(ctx, catalog.config.TmuxPath, args...)
 	if err != nil {
 		return
 	}
 	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		fields := strings.Split(line, "\t")
+		fields := strings.SplitN(line, "|", 3)
 		if len(fields) < 2 {
 			continue
 		}
@@ -168,7 +170,7 @@ func (catalog *Catalog) List() []Info {
 }
 
 func (catalog *Catalog) refreshTitles(ctx context.Context) {
-	args := []string{"-L", catalog.config.SocketName, "-f", "/dev/null", "list-panes", "-a", "-F", "#{session_name}\t#{pane_title}"}
+	args := []string{"-L", catalog.config.SocketName, "-f", "/dev/null", "list-panes", "-a", "-F", "#{session_name}|#{pane_title}"}
 	output, err := catalog.runner.Output(ctx, catalog.config.TmuxPath, args...)
 	if err != nil {
 		return
@@ -177,7 +179,7 @@ func (catalog *Catalog) refreshTitles(ctx context.Context) {
 	catalog.mu.Lock()
 	defer catalog.mu.Unlock()
 	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
-		fields := strings.SplitN(line, "\t", 2)
+		fields := strings.SplitN(line, "|", 2)
 		if len(fields) != 2 {
 			continue
 		}
