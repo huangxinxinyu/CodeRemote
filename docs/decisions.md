@@ -16,19 +16,22 @@
 | 同目录可开多个独立终端 | 允许切换，不要求协调文件冲突 |
 | 账号业务暂缓 | 不设计统一模型服务或 provider 登录流程 |
 | 移动端控制台保留单一原生终端输入 | 用户真机确认 Codex 上方原生输入栏已支持指令，要求移除下方重复 composer；保留工作目录、状态与终端入口 |
-| 不保留额外终端控制键条 | 用户确认手机键盘已经满足需要；界面把空间优先留给 agent 实时输出 |
+| 底部只保留 Esc、粘贴、Ctrl+C 三个快捷按钮 | 用户 2026-09-26 反馈手机长按粘贴和控制键不便，明确要求这三个入口；原生 TUI 仍是唯一输入栏 |
 | 恢复 agent 原生 ANSI 样式 | 浏览器 xterm 支持颜色与字重；新 agent 进程不继承宿主启动环境中的 `NO_COLOR`，但不改用户配置或 provider 环境目录 |
 | 手机可以新建和切换对话 | “新对话”严格映射为新的 `terminal_id`、tmux session 和 agent 原生 session；旧终端继续运行，不增加产品聊天数据库 |
+| 移动端顶部直接切换多个对话 | 用户 2026-09-24 明确要求顶部多个 tab，且终端可以属于不同工作目录；标签复用现有全量终端列表，显示原生标题和目录名，选中后重新附着对应 `terminal_id` |
 | 手机可以清理终端并恢复电脑上的原生 session | “结束”只终止所选产品受控 tmux/agent 现场，不等同于离开页面，也不删除 Codex 原生历史；历史继续通过官方 `thread/list` 查找，并以 `codex resume` 在新终端恢复 |
 | 会话列表优先显示 agent 原生标题 | 读取 agent 主动写入的 tmux pane title；不解析终端正文，不读取 provider 私有会话文件，空标题仍回退为本地编号 |
 | 手机能选择过去的 Codex 对话 | 通过官方 app-server `thread/list` 获取 Codex 原生名称和 ID，选择后以 `codex resume <id>` 启动新终端；不创建聊天数据库 |
-| Codex 工作区支持单指上下滑动 | 触摸手势映射为隔离 tmux server 的原生滚轮/copy-mode 回滚，不把 TUI 输出复制成普通文本列表 |
+| Codex 工作区支持单指上下滑动 | 触摸手势映射为滚轮；请求鼠标事件的新版 Codex TUI 接收原生滚轮，其他 pane 使用 tmux copy mode，不把 TUI 输出复制成普通文本列表 |
 | 手机可以切换工作目录 | 路径面板支持手输和逐层浏览；确认后在所选 cwd 新建独立终端，不能修改运行中终端的 cwd |
 | 模型切换优先复用 Codex 原生指令 | `/model` 打开 Codex 自己的模型与推理强度选择器；网页不维护账号相关模型清单 |
 | `/model` 暂用原生键盘操作 | 用户确认手机键盘可以操作选择器，决定暂不增加触摸点选或网页模型清单 |
 | 网页预组装的 Codex 指令显式标记粘贴边界 | 真机反馈后复现确认：同批发送普通 `/model\r` 只输入不提交；`ESC[200~...ESC[201~` 后再回车可由原生 TUI 稳定区分正文与提交键，不引入模型 API 或固定延时 |
 
 ## 建议作为实现基线
+
+2026-09-25 用户要求补安装包或一键安装。工程先选 macOS 一键源码安装：当前 checkout 可直接安装，本机没有 checkout 时单行命令下载 `main` 构建；二进制进入当前用户的 `~/.local/bin`。安装器仅补缺少的 Go/tmux，不自动安装或登录 Tailscale/agent，不改 launchd、Serve 或运行中 tmux。该交付选择不改变 Go daemon + tmux + Tailscale 架构；真实新机安装与手机端链路仍需分别验收。
 
 | 建议 | 理由 | 尚需验证 |
 | --- | --- | --- |
@@ -78,6 +81,14 @@ Codex 模型切换和 slash command 同样是原生 TUI integration：页面可�
 同日真机截图暴露了视觉修复遗漏：Codex/tmux 已输出 ANSI 真彩色和粗体，xterm 也给对应文字生成 `xterm-fg-*` / `xterm-bold` class，但原 CSP 的 `style-src 'self'` 阻止 xterm DOM renderer 注入的样式表，浏览器计算结果全部是普通白字。浏览器探针在修改前稳定失败；把样式策略改为 `style-src 'self' 'unsafe-inline'` 后，同一探针确认运行时样式表生效、绿色代码路径与 700 字重恢复。`script-src 'self'`、`connect-src 'self'` 等约束保持独立；只渲染 agent 已输出的终端样式，不把纯文本解析成产品 Markdown。
 
 2026-09-24 工程验证：用户的 iPhone 截图中中文变成横线；Mac 上 tmux `capture-pane` 保留了正确中文，而实际 launchd daemon 没有 UTF-8 locale。隔离 tmux PTY 探针在无 locale 时复现了下划线输出，并证明客户端全局 `-u` 恢复 UTF-8。因此所有浏览器 tmux 附着显式加 `-u`；不覆盖 `HOME/CODEX_HOME`，也不修改 agent 的 locale。
+
+2026-09-25 用户反馈：iPhone 中文输入法下无法输入 `/`、空格等符号。资料核实：[xterm.js #5835](https://github.com/xtermjs/xterm.js/issues/5835) 在 iOS 中文输入法记录了相同的空格/标点漏发，按键初期只有 `keyCode=229`，最终字符到 `input/keyup` 才可见；[待合并修复 #5836](https://github.com/xtermjs/xterm.js/pull/5836) 也采用 keyup 补发方向。工程处理是在浏览器端限定 iOS、单字符空格/标点和 xterm 未发数据的条件下补发，不更换原生 TUI 或终端协议。事件序列单测及 Go 构建已通过。初次构建后问题仍在，实际监听 `127.0.0.1:8080` 的 launchd 进程仍是旧版，返回的 `app.js` 缺少补丁且新模块为 404；用 `launchctl kickstart -k gui/501/dev.coderemote.manual` 重启后，新模块返回 200，6 个 tmux session 均保留。用户随后在 iPhone Safari 重新打开页面并确认 `/`、空格输入正常。
+
+2026-09-26 用户明确提出手机底部加入 Esc、粘贴、Ctrl+C，取代此前“不常驻控制键条”的建议。工程实现只加入这三个按钮，不扩展为完整软键盘；它们走现有终端字节通道，Ctrl+C 是 ETX，不做产品层任务取消。粘贴使用 xterm.js 当前 paste 模式，不自动回车；剪贴板权限或非 HTTPS 导致读取失败时仅显示提示，不发送空输入。HTTPS 真机剪贴板体验尚未验证。
+
+2026-09-26 用户反馈首次点击原生输入栏后看不到 Codex 已输入内容，必须键入字符才触发画面上移。工程诊断指出旧布局判定只比较两个可能同步缩小的 Safari 视口值；iPhone 聚焦时立即采用紧凑布局，并监听两种 resize 更新可见高度。Node 回归覆盖首次聚焦、键盘缩小以及失焦还原；真机尚待复验。
+
+同日用户反馈 AI infra 的论文对话无法向上滑看输出。该 pane 实测 `alternate_on=1`、`mouse_any_flag=1`、`history_size=0`，旧 tmux WheelUpPane 绑定只能进入空的 copy mode。将鼠标感知的 TUI 走 tmux `send-keys -M`，其余 pane 保留 copy mode；隔离 tmux 绑定语法及 Go 测试通过，Codex 原生滚动仍需真机复验。另一次 launchd 重启后 API 仅列出 prototype，但 tmux 中其余 session 均存活；无 locale 环境重现 tmux 将 tab 输出成 `_`，因此 catalog 改用 `|` 格式并保留字段内竖线。新版 daemon 重启后 API 列出全部 9 个 session，当前全局 WheelUpPane 绑定也已更新。
 
 “后台一直跑”落实为 Mac 持续执行。iPhone 锁屏后连接可以断开，回到页面时重新附着；不依赖 Safari 在后台常驻。
 

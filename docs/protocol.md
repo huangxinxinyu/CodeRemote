@@ -50,6 +50,8 @@ iPhone Safari 只通过 Tailscale tailnet 访问 Mac daemon。首版没有公网
 
 浏览器预组装的 Codex slash command 在 `terminal.input` 数据中使用 bracketed-paste 起止序列包住指令正文，提交型指令在结束边界后追加 `CR`；只打开 `/` 菜单时不追加。这样保留终端字节协议，同时避免 Codex 把同批正文与回车识别成未提交的粘贴内容。旧版独立 composer 已移除；原生终端直接键入保持原字节路径。Daemon 不解析或识别这些指令。
 
+底部 Esc、Ctrl+C 快捷按钮分别发送 `ESC`、`ETX`；粘贴按钮读取浏览器剪贴板纯文本并通过 xterm.js 当前 paste 模式送入同一 `terminal.input`，不自动追加 `CR`。三者先发 `terminal.focus` 以便从 tmux copy mode 返回实时画面。粘贴不可用或终端未连接时不发送输入；没有新增服务端命令类型。
+
 ## WebSocket 消息
 
 首版建议使用 JSON envelope；终端数据使用 base64 保存原始字节，先确保正确性，再根据测量结果决定是否引入二进制帧。

@@ -15,11 +15,12 @@ iPhone Safari → Tailscale 私网 → Mac 上的 Code Remote → tmux → Codex
 - 从 iPhone Safari 打开 Mac 上的私有 Web 页面。
 - 在指定目录启动 Codex 或 Claude Code，并显示其原生 TUI。
 - 从手机直接使用 agent 原生输入栏输入任务、查看输出和响应 agent 自己的确认提示。
-- 在手机上新建、列出、切换和明确结束多个独立终端；列表优先显示 agent 原生会话标题，切走后其他 agent 继续运行，结束只影响所选终端。
+- 在手机顶部标签中直接切换多个独立终端，包括不同工作目录的对话；可新建和明确结束终端，切走后其他 agent 继续运行。
 - 在手机上手输或逐层浏览工作目录，并在所选目录启动新的独立终端；当前终端不会被改 cwd 或结束。
 - Codex 模式下列出当前目录的已保存对话，显示 Codex 自己的名称与预览，并可用原生 `codex resume` 恢复到新的独立终端。
 - 从模型面板打开 Codex 原生 `/model` 选择器，也可打开原生 `/` 菜单或快捷触发 `/status`、`/permissions`、`/review`。
-- 在 iPhone 的原生 TUI 区域单指上下滑动，查看 tmux 保留的有限终端历史。
+- 在 iPhone 的原生 TUI 区域单指上下滑动，由当前 agent TUI 或 tmux 查看有限的终端历史。
+- 在终端下方点 Esc、粘贴或 Ctrl+C；粘贴从 Safari 剪贴板读取纯文本，不自动按 Enter。剪贴板一键读取需要私有 HTTPS 页面和 Safari 授权。
 - Safari 锁屏、关闭页面或临时断网后，Mac 上的 tmux 和 agent 不会因为网页断开而自动结束。
 - Go daemon 重启后从产品专用 tmux server 恢复终端列表。
 - 支持直接通过 Tailscale 地址访问，也可通过 Tailscale Serve 测试私有 HTTPS。
@@ -46,8 +47,8 @@ Codex 和 Claude 各自有远程使用方式，但入口、会话和运行环境
 | --- | --- | --- |
 | Mac | [Tailscale](https://tailscale.com/download/mac) | 把服务安全地放在自己的 tailnet 中 |
 | iPhone | [Tailscale](https://apps.apple.com/app/tailscale/id1470499037) | 让 Safari 跨网络访问 Mac |
-| Mac | [Homebrew](https://brew.sh/) | 推荐的依赖安装方式 |
-| Mac | Go 与 tmux | 构建 daemon，并在断线后保留终端；可由 `make bootstrap` 安装 |
+| Mac | [Homebrew](https://brew.sh/) | 一键安装缺少的 Go 与 tmux 时使用 |
+| Mac | Go 与 tmux | 构建 daemon，并在断线后保留终端；安装脚本可补齐缺少的工具 |
 | Mac | [Codex CLI](https://developers.openai.com/codex/cli/) 或 [Claude Code](https://docs.anthropic.com/en/docs/claude-code/setup) | 至少安装并登录一个要远程使用的 agent |
 | Mac | Git | 下载和更新本仓库 |
 
@@ -64,7 +65,17 @@ Code Remote 不会替你安装 agent、登录 provider、复制凭据，也不�
 
 不要启用 Tailscale Funnel。Funnel 会把服务开放到公网，不在本项目的安全边界内。
 
-### 2. 下载并构建 Code Remote
+### 2. 安装 Code Remote
+
+在 Mac 终端运行一键安装命令：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/huangxinxinyu/CodeRemote/main/scripts/install.sh | sh
+```
+
+它下载当前 `main` 源码，用 Homebrew 补齐缺少的 Go/tmux，构建后把 daemon 安装到 `~/.local/bin/code-remote-daemon`。重复运行会更新该可执行文件。安装过程不会启动 daemon、修改现有 tmux session 或 Tailscale Serve 配置；Tailscale 和 agent 仍由你登录和配置。没有 Homebrew 时，先按上表安装。
+
+若已经克隆了仓库，或想安装本地未提交的修改，可在仓库目录运行 `sh scripts/install.sh`，不必下载另一份源码。可用 `--bin-dir /absolute/path` 更改安装位置。需要自行构建时，仍可使用原开发命令：
 
 ```sh
 git clone https://github.com/huangxinxinyu/CodeRemote.git
@@ -79,7 +90,7 @@ make build
 
 `make doctor` 应能找到 Go、tmux、Tailscale，以及你准备使用的 agent。首次远程运行前，先在 Mac 的普通终端里启动一次 `codex` 或 `claude`，完成各自的登录和初始化。
 
-构建完成后，可执行文件位于：
+一键安装后的可执行文件位于 `~/.local/bin/code-remote-daemon`；手动运行 `make build` 的产物位于：
 
 ```text
 bin/code-remote-daemon
@@ -100,7 +111,7 @@ tailscale ip -4
 然后启动 daemon。把示例 IP 和工作目录换成自己的真实值：
 
 ```sh
-./bin/code-remote-daemon \
+~/.local/bin/code-remote-daemon \
   -listen 100.78.102.15:8080 \
   -agent codex \
   -cwd /absolute/path/to/workspace
@@ -125,7 +136,7 @@ TAILSCALE_BE_CLI=1 /Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4
 daemon 必须只监听本机回环地址：
 
 ```sh
-./bin/code-remote-daemon \
+~/.local/bin/code-remote-daemon \
   -listen 127.0.0.1:8080 \
   -agent codex \
   -cwd /absolute/path/to/workspace
@@ -154,7 +165,7 @@ Serve 只能作为 tailnet 内的私有入口，不要把 `serve` 换成 `funnel
 例如，要在另一个目录中运行 Claude Code：
 
 ```sh
-./bin/code-remote-daemon \
+~/.local/bin/code-remote-daemon \
   -listen 127.0.0.1:8080 \
   -agent claude \
   -cwd "/Users/your-name/Developer/my project"

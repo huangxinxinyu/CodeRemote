@@ -74,7 +74,7 @@ Codex 模型和 slash command 继续由原生 TUI 处理。网页可向当前已
 
 网页预组装上述 Codex 快捷指令时，以 bracketed-paste 起止序列界定正文；需要执行的指令在结束序列后追加回车，只打开菜单的 `/` 不追加。不能把正文与回车作为无边界的普通文本批次发送：Codex 0.155.1 的 `/model` 和 0.156.1 的旧 composer 中文指令验收会把这种输入留在原生输入栏而不提交。当前页面已按用户要求移除重复 composer；直接在 xterm 中键入仍按原始字节传递，不覆盖已有原生输入。
 
-终端聚焦时，浏览器发送 `terminal.focus`。Daemon 查询所选终端唯一 pane 的 `#{pane_in_mode}`；仅值为 `1` 时执行 `send-keys -X cancel` 退出 tmux copy mode，普通输入栏和 Codex 菜单不收到额外 Esc。移动端终端滑动会释放 xterm 焦点，避免 copy mode 的定位光标被误看成原生输入光标。键盘占用视口时，页面使用 Safari `visualViewport.height` 调整原生终端可见高度。
+终端聚焦时，浏览器发送 `terminal.focus`。Daemon 查询所选终端唯一 pane 的 `#{pane_in_mode}`；仅值为 `1` 时执行 `send-keys -X cancel` 退出 tmux copy mode，普通输入栏和 Codex 菜单不收到额外 Esc。移动端终端滑动会释放 xterm 焦点，避免 copy mode 的定位光标被误看成原生输入光标。iPhone 首次聚焦原生输入栏即切换紧凑布局，再依据 Safari 可见视口和窗口尺寸调整终端高度，不等待输入字符。
 
 建议让退出后的 pane 保留到用户关闭终端，以便展示最终输出和退出码；agent 已退出时显示 `exited`，不能把仍存在的 tmux pane 当作 agent 正在运行。
 
@@ -101,7 +101,7 @@ Daemon 恢复时以实际 tmux/进程状态核对本地元数据。启动中途�
 
 当前屏幕恢复是首版要求；滚动历史可使用 tmux 有界历史及浏览器终端能力，但不承诺永久保留全部输出。触摸滚动、复制、中文输入、多行粘贴和特殊键必须在 iPhone Safari 验证。
 
-专用 tmux server 开启 mouse，并将全屏 alternate-screen 下的 `WheelUpPane` 固定进入 copy mode。浏览器只在 TUI 区域把单指垂直手势编码为终端鼠标滚轮序列；这条路径查看 tmux 有界回滚，不改变 agent 输入协议或制造结构化消息。
+专用 tmux server 开启 mouse。浏览器只在 TUI 区域把单指垂直手势编码为终端鼠标滚轮序列；若 pane 请求鼠标事件，`WheelUpPane` 交给 agent 原生 TUI，否则进入 tmux copy mode 查看有界回滚。这不改变 agent 输入协议，也不制造结构化消息。
 
 终端输出按字节传递，不按 WebSocket 分片强行解码 UTF-8；字符与控制序列可能跨分片。尺寸变化修改附着客户端 PTY 的行列数，再由 tmux 传递终端尺寸。
 
