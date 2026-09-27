@@ -88,7 +88,7 @@ func TestEnsureCreatesMissingTmuxSession(t *testing.T) {
 		{name: "/opt/homebrew/bin/tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "has-session", "-t", "=prototype"}},
 		{name: "/opt/homebrew/bin/tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "new-session", "-d", "-s", "prototype", "-x", "60", "-y", "30", "-c", "/tmp/project with spaces", "--", "/usr/bin/env", "-u", "NO_COLOR", "/usr/local/bin/codex"}},
 		{name: "/opt/homebrew/bin/tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "set-option", "-g", "mouse", "on"}},
-		{name: "/opt/homebrew/bin/tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "bind-key", "-T", "root", "WheelUpPane", "copy-mode", "-e", "-u"}},
+		{name: "/opt/homebrew/bin/tmux", args: []string{"-L", "code-remote", "-f", "/dev/null", "bind-key", "-T", "root", "WheelUpPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode -e -u"}},
 	}
 	if !reflect.DeepEqual(runner.commands, want) {
 		t.Fatalf("commands = %#v, want %#v", runner.commands, want)
@@ -125,7 +125,7 @@ func TestEnsureReusesExistingTmuxSession(t *testing.T) {
 	}
 	wantWheelUp := recordedCommand{
 		name: "tmux",
-		args: []string{"-L", "code-remote", "-f", "/dev/null", "bind-key", "-T", "root", "WheelUpPane", "copy-mode", "-e", "-u"},
+		args: []string{"-L", "code-remote", "-f", "/dev/null", "bind-key", "-T", "root", "WheelUpPane", "if-shell", "-F", "#{mouse_any_flag}", "send-keys -M", "copy-mode -e -u"},
 	}
 	if !reflect.DeepEqual(runner.commands[2], wantWheelUp) {
 		t.Fatalf("wheel-up configuration = %#v, want %#v", runner.commands[2], wantWheelUp)

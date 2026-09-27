@@ -115,12 +115,13 @@ func (manager *Manager) Ensure(ctx context.Context, cols, rows uint16) error {
 	if err := manager.runner.Run(ctx, manager.config.TmuxPath, append(base, "set-option", "-g", "mouse", "on")...); err != nil {
 		return fmt.Errorf("enable tmux scrollback gestures: %w", err)
 	}
-	// tmux normally forwards wheel events to applications in the alternate
-	// screen. Codex uses that screen, so reserve wheel-up for tmux history and
-	// let copy mode handle subsequent up/down events natively.
+	// Newer Codex TUIs keep conversation history in the alternate screen and
+	// request mouse events, leaving tmux with no scrollback. Forward wheel
+	// events to those applications; older TUIs still use tmux copy mode.
 	wheelUp := append(base,
 		"bind-key", "-T", "root", "WheelUpPane",
-		"copy-mode", "-e", "-u",
+		"if-shell", "-F", "#{mouse_any_flag}",
+		"send-keys -M", "copy-mode -e -u",
 	)
 	if err := manager.runner.Run(ctx, manager.config.TmuxPath, wheelUp...); err != nil {
 		return fmt.Errorf("configure tmux scrollback gesture: %w", err)
