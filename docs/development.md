@@ -23,6 +23,8 @@ make bootstrap
 
 该命令只安装缺失的 Go 与 tmux，不会安装或升级 Tailscale GUI；Tailscale 按下一节人工准备。
 
+面向使用者的一键安装入口是 `sh scripts/install.sh`（在当前 checkout 中）或 README 中的单行下载命令。安装器仅支持 macOS，构建当前源码或下载 `main`，将二进制原子替换到 `~/.local/bin/code-remote-daemon`；可用 `--bin-dir` 指定其他目录。缺少 Go/tmux 时通过 Homebrew 安装；没有 Homebrew 会明确失败。它不启动 daemon、不修改 launchd/tmux/Tailscale Serve，不安装或登录 agent。安装回归测试可运行 `sh scripts/install_test.sh`，macOS 上也包含在 `make check` 中。
+
 ## Tailscale 准备
 
 1. 按 [Tailscale macOS 安装说明](https://tailscale.com/docs/install/mac)在 Mac 安装客户端并登录个人 tailnet。

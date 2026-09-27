@@ -25,6 +25,7 @@ check:
 	go test ./...
 	go vet ./...
 	sh scripts/development_setup_test.sh
+	@if [ "$$(uname -s)" = Darwin ]; then sh scripts/install_test.sh; fi
 
 doctor:
 	./scripts/doctor.sh
