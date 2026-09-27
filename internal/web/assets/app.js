@@ -1,5 +1,6 @@
 import { Terminal } from "/assets/xterm.mjs";
 import { FitAddon } from "/assets/addon-fit.mjs";
+import { createIOSIMEPunctuationFallback } from "/assets/ios-ime-input.mjs";
 
 // xterm measures cell width when it opens; wait for the bundled font first.
 await document.fonts.load('12.5px "JetBrains Mono"').catch(() => {});
@@ -811,7 +812,21 @@ async function resumeHistoryThread(threadID) {
   }
 }
 
-terminal.onData(sendInput);
+// iOS Chinese keyboards can deliver punctuation only in the textarea input event.
+// xterm 6 can miss it when the matching keydown has keyCode 229.
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+if (isIOS && terminalTextarea) {
+  const imeInput = createIOSIMEPunctuationFallback(sendInput);
+  terminal.onData((data) => imeInput.data(data));
+  terminalTextarea.addEventListener("keydown", (event) => imeInput.keydown(event), { capture: true });
+  terminalTextarea.addEventListener("input", (event) => imeInput.input(event));
+  terminalTextarea.addEventListener("keyup", () => imeInput.keyup());
+  terminalTextarea.addEventListener("compositionstart", () => imeInput.compositionstart());
+  terminalTextarea.addEventListener("compositionend", () => imeInput.compositionend());
+} else {
+  terminal.onData(sendInput);
+}
 installTerminalTouchScrolling();
 new ResizeObserver(() => {
   clearTimeout(resizeTimer);
