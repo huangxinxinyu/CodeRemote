@@ -79,6 +79,7 @@ button {
   display: grid;
   grid-template-rows:
     calc(66px + env(safe-area-inset-top))
+    58px
     74px
     minmax(0, 1fr)
     calc(58px + env(safe-area-inset-bottom));
@@ -181,6 +182,92 @@ button {
   color: var(--red);
   background: #26151d;
   border-color: #65313c;
+}
+
+.conversation-tabs {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 4px max(12px, env(safe-area-inset-right)) 4px max(12px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--line);
+}
+
+.conversation-tab-list {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.conversation-tab-list::-webkit-scrollbar {
+  display: none;
+}
+
+.conversation-tab {
+  display: grid;
+  flex: 0 0 auto;
+  align-content: center;
+  gap: 3px;
+  min-width: 95px;
+  max-width: min(46vw, 220px);
+  min-height: 42px;
+  overflow: hidden;
+  padding: 4px 12px;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 650;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+}
+
+.conversation-tab span,
+.conversation-tab small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-tab small {
+  color: var(--muted);
+  font: 550 9px/1 var(--mono);
+}
+
+.conversation-tab.is-current {
+  color: var(--green);
+  background: var(--green-soft);
+  border-color: #27715f;
+}
+
+.conversation-tab-empty {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.conversation-tab-new {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--green);
+  font-size: 22px;
+  line-height: 1;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+}
+
+.conversation-tab-new:disabled {
+  color: var(--muted);
 }
 
 .context-bar {
@@ -1091,6 +1178,7 @@ textarea:focus-visible {
   .app-shell {
     grid-template-rows:
       calc(50px + env(safe-area-inset-top))
+      46px
       56px
       minmax(0, 1fr)
       calc(50px + env(safe-area-inset-bottom));
@@ -1134,6 +1222,37 @@ textarea:focus-visible {
     color: #b5bd68;
     background: #282c34;
     border-color: #68734a;
+  }
+
+  .conversation-tabs {
+    gap: 6px;
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-left: max(8px, env(safe-area-inset-left));
+    border-bottom-color: #414852;
+  }
+
+  .conversation-tab {
+    min-height: 38px;
+    color: #c5c8c6;
+    background: #282c34;
+    border-color: #454c58;
+    border-radius: 6px;
+  }
+
+  .conversation-tab.is-current {
+    color: #b5bd68;
+    background: #303640;
+    border-color: #68734a;
+  }
+
+  .conversation-tab-new {
+    flex-basis: 34px;
+    width: 34px;
+    height: 34px;
+    color: #b5bd68;
+    background: #282c34;
+    border-color: #454c58;
+    border-radius: 6px;
   }
 
   .context-bar {
@@ -1310,7 +1429,11 @@ textarea:focus-visible {
 body.keyboard-open .app-shell {
   height: var(--visible-viewport-height, 100dvh);
   min-height: 0;
-  grid-template-rows: 0 0 minmax(100px, 1fr) 0;
+  grid-template-rows: 0 calc(50px + env(safe-area-inset-top)) 0 minmax(100px, 1fr) 0;
+}
+
+body.keyboard-open .conversation-tabs {
+  padding-top: calc(4px + env(safe-area-inset-top));
 }
 
 body.keyboard-open .topbar,

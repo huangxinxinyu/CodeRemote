@@ -16,6 +16,8 @@ const sheet = document.querySelector("#context-sheet");
 const sheetTitle = document.querySelector("#sheet-title");
 const sheetEyebrow = document.querySelector("#sheet-eyebrow");
 const activeSessionName = document.querySelector("#active-session-name");
+const conversationTabList = document.querySelector("#conversation-tab-list");
+const newSessionTab = document.querySelector("#new-session-tab");
 const sessionList = document.querySelector("#session-list");
 const sessionCount = document.querySelector("#session-count");
 const historyList = document.querySelector("#history-list");
@@ -186,6 +188,7 @@ async function loadRuntimeContext() {
 }
 
 function renderSessionList() {
+  renderConversationTabs();
   sessionList.replaceChildren();
   sessionCount.textContent = String(terminalContexts.length);
   if (terminalContexts.length === 0) {
@@ -238,6 +241,38 @@ function renderSessionList() {
     sessionList.append(row);
   });
   renderSessionListError();
+}
+
+function renderConversationTabs() {
+  conversationTabList.replaceChildren();
+  if (terminalContexts.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "conversation-tab-empty";
+    empty.textContent = "暂无对话";
+    conversationTabList.append(empty);
+    return;
+  }
+
+  for (const context of terminalContexts) {
+    const name = sessionDisplayName(context);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "conversation-tab";
+    button.title = `${name} · ${compactPath(context.working_directory)}`;
+    button.setAttribute("aria-label", `${name}，${context.working_directory}`);
+    button.setAttribute("aria-pressed", String(context.terminal_id === activeTerminalID));
+    const title = document.createElement("span");
+    title.textContent = name;
+    const directory = document.createElement("small");
+    directory.textContent = context.workspace_name || directoryName(context.working_directory);
+    button.append(title, directory);
+    if (context.terminal_id === activeTerminalID) {
+      button.classList.add("is-current");
+    }
+    button.addEventListener("click", () => switchTerminal(context.terminal_id));
+    conversationTabList.append(button);
+  }
+  conversationTabList.querySelector(".is-current")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function renderSessionListError() {
@@ -328,6 +363,11 @@ async function loadTerminals() {
     updateRuntimeContext();
     return true;
   } catch {
+    conversationTabList.replaceChildren();
+    const tabError = document.createElement("span");
+    tabError.className = "conversation-tab-empty";
+    tabError.textContent = "读取对话失败";
+    conversationTabList.append(tabError);
     sessionList.replaceChildren();
     const error = document.createElement("p");
     error.className = "session-list-empty";
@@ -700,6 +740,7 @@ async function endTerminal(terminalID) {
 function setCreatingSession(value) {
   creatingSession = value;
   newSessionButton.disabled = value;
+  newSessionTab.disabled = value;
   newSessionNav.disabled = value;
   newSessionButton.lastChild.textContent = value ? " 创建中…" : " 新建对话";
   newSessionNav.querySelector("small").textContent = value ? "创建中" : "新对话";
@@ -787,6 +828,7 @@ document.querySelector("#reconnect").addEventListener("click", () => {
   connectToTerminal(activeTerminalID, true);
 });
 newSessionButton.addEventListener("click", () => createSession());
+newSessionTab.addEventListener("click", () => createSession());
 newSessionNav.addEventListener("click", () => createSession());
 pathForm.addEventListener("submit", (event) => {
   event.preventDefault();
