@@ -113,7 +113,7 @@
 - 首次聚焦测试先失败后通过，覆盖 iPhone 未输入字符前的紧凑布局及键盘导致 `visualViewport.height`、`innerHeight` 同时缩小的情形。真实 Safari 键盘动画仍待验收。
 - AI infra 论文会话 `session-027b9754bb59` 的 tmux 状态为 alternate screen、鼠标事件打开、history 0；旧 wheel 绑定只会进入空的 copy mode。新条件绑定的 Go 测试先失败后通过，隔离 tmux 命令解析通过；用户随后确认真实 iPhone 上该对话可以滑动。
 - 真实 launchd 重启后 API 一度只列出 prototype，而 tmux session 均仍存活。无 locale 的启动环境下，tmux 将 `-F` 中的制表符输出成 `_`；用可保留路径/标题内竖线的分隔格式修复，Go 回归先失败后通过。新版 daemon 再次重启后 `/api/v1/terminals` 列出全部 9 个 session；专用 tmux 的 WheelUpPane 绑定已更新。论文滚动已获用户确认，首次聚焦继续修复。
-- 用户随后指出手机无法按 Codex 论文对话提示的 F3。`infocmp xterm-256color` 给出 `kf3=\EOR`；按键测试先失败后通过，底部“查找 F3”按钮发送相同序列。真实 iPhone 上能否打开 Codex 搜索仍待复验。
+- 用户随后指出手机无法按“那个键”；工程结合论文对话中的 F3 提示暂按 F3 理解，所指按键仍待用户确认。`infocmp xterm-256color` 给出 `kf3=\EOR`；按键测试先失败后通过，底部“查找 F3”按钮发送相同序列。真实 iPhone 上能否打开 Codex 搜索仍待复验。
 - 用户真机反馈：论文对话现在可以滑动查看输出，首次点入输入栏仍不随键盘上移。检查移动端 CSS 后发现原卡片 `flex: 1 0 340px` 的收缩系数 0 被聚焦样式继承，聚焦后的有限可用高度不能缩小卡片；样式改为 `flex: 1 1 0`。静态回归检查先失败后通过，真实 Safari 效果待复验。Mac headless Chrome 在本环境启动超时，未作为视觉验收证据。
 
 ## 原型失败时的处理

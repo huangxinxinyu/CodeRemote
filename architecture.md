@@ -64,7 +64,7 @@ iOS 中文输入法可能在 `keydown` 只报告 `keyCode=229`，空格和标点
 
 2026-09-26 用户要求在手机底部增加 Esc、粘贴和 Ctrl+C，以减少长按原生输入栏的操作。快捷键直接经现有 `terminal.input` 发送 ESC/ETX 字节；粘贴由浏览器读取纯文本后交给 xterm.js 的 `paste()`，沿现有 `onData` 路径发送，遵循终端当前的 bracketed-paste 模式且不追加回车。发送前沿用 `terminal.focus` 返回 tmux 实时画面，不弹出新的输入框。剪贴板读取依赖 Safari 的安全上下文和授权；直接 tailnet HTTP 页面无法承诺一键读取，页面会说明需要私有 HTTPS，原生长按粘贴仍可用。单次粘贴限 40 KiB UTF-8，以免 base64 后超过服务端 64 KiB WebSocket 帧上限。用户已确认手机端快捷按钮可工作；HTTPS 剪贴板授权边界和更多键盘布局仍待验收。
 
-同日用户反馈手机无法按 Codex 在论文对话中提示的 F3。底部增加“查找 F3”，通过原有 `terminal.input` 发送 xterm F3 序列 `ESC O R`，让 Codex 自行处理原生对话搜索；不读取或索引终端正文。`xterm-256color` 的 `kf3` 与该序列一致，Node 行为测试通过；真实 iPhone 点击后的 Codex 搜索仍待验收。
+同日用户反馈手机无法按“那个键”；结合论文对话当时的 Codex F3 提示，工程暂按 F3 理解，底部增加“查找 F3”。按钮通过原有 `terminal.input` 发送 xterm F3 序列 `ESC O R`，让 Codex 自行处理原生对话搜索；不读取或索引终端正文。`xterm-256color` 的 `kf3` 与该序列一致，Node 行为测试通过；所指按键及真实 iPhone 点击后的 Codex 搜索仍待用户确认。
 
 PTY 附着 tmux 时显式使用全局 `-u` 选项输出 UTF-8。2026-09-24 在无 `LANG/LC_*` 的 launchd daemon 中复现：不带此选项时，tmux 内部保存的中文正确，但附着客户端收到等宽下划线；带 `-u` 后客户端收到原始中文 UTF-8。此修复只影响附着输出编码，不修改 agent 环境或原生会话。
 
