@@ -2,6 +2,7 @@ import { Terminal } from "/assets/xterm.mjs";
 import { FitAddon } from "/assets/addon-fit.mjs";
 import { createIOSIMEPunctuationFallback } from "/assets/ios-ime-input.mjs";
 import { createTerminalShortcuts } from "/assets/terminal-shortcuts.mjs";
+import { terminalViewportLayout } from "/assets/terminal-layout.mjs";
 
 // xterm measures cell width when it opens; wait for the bundled font first.
 await document.fonts.load('12.5px "JetBrains Mono"').catch(() => {});
@@ -882,11 +883,15 @@ document.addEventListener("keydown", (event) => {
 });
 
 function updateKeyboardLayout() {
-  if (!window.visualViewport) return;
-  const keyboardVisible = window.visualViewport.height < window.innerHeight * 0.78;
-  document.body.classList.toggle("keyboard-open", keyboardVisible);
-  if (keyboardVisible) {
-    document.body.style.setProperty("--visible-viewport-height", `${window.visualViewport.height}px`);
+  const layout = terminalViewportLayout({
+    ios: isIOS,
+    focused: document.activeElement === terminalTextarea,
+    visualHeight: window.visualViewport?.height,
+    innerHeight: window.innerHeight,
+  });
+  document.body.classList.toggle("keyboard-open", layout.compact);
+  if (layout.compact) {
+    document.body.style.setProperty("--visible-viewport-height", `${layout.height}px`);
   } else {
     document.body.style.removeProperty("--visible-viewport-height");
   }
@@ -894,6 +899,7 @@ function updateKeyboardLayout() {
 }
 
 window.visualViewport?.addEventListener("resize", updateKeyboardLayout);
+window.addEventListener("resize", updateKeyboardLayout);
 terminalTextarea.addEventListener("focus", () => {
   if (attachmentID) {
     if (terminalTouch.active) {
