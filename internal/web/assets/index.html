@@ -89,6 +89,13 @@
           </div>
         </article>
 
+        <div class="terminal-shortcuts" role="group" aria-label="终端快捷键">
+          <button type="button" data-terminal-key="escape" aria-label="发送 Esc 键">Esc</button>
+          <button id="paste-clipboard" type="button" aria-label="粘贴剪贴板文字到终端">粘贴</button>
+          <button type="button" data-terminal-key="interrupt" aria-label="发送 Ctrl+C 中断键">Ctrl+C</button>
+          <span id="shortcut-feedback" role="status" aria-live="polite" hidden></span>
+        </div>
+
         <aside class="truth-note" aria-label="界面数据说明">
           <span aria-hidden="true">i</span>
           <p><strong>原生会话保持完整。</strong> Code Remote 只传输终端，不会根据输出文字猜测任务状态。</p>

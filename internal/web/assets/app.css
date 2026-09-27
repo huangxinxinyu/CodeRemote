@@ -522,6 +522,36 @@ body[data-connection="exited"] .terminal-led {
   background-size: 100% 24px;
 }
 
+.terminal-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 7px 0 2px;
+}
+
+.terminal-shortcuts button {
+  min-width: 0;
+  min-height: 42px;
+  color: #c5c8c6;
+  font: 650 12px/1 var(--mono);
+  background: #242832;
+  border: 1px solid #505963;
+  border-radius: 7px;
+}
+
+.terminal-shortcuts button:active {
+  color: #b5bd68;
+  background: #303640;
+}
+
+#shortcut-feedback {
+  grid-column: 1 / -1;
+  color: #efb86b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 #terminal,
 #terminal .xterm {
   width: 100%;

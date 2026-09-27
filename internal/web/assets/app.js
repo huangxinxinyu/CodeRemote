@@ -1,6 +1,7 @@
 import { Terminal } from "/assets/xterm.mjs";
 import { FitAddon } from "/assets/addon-fit.mjs";
 import { createIOSIMEPunctuationFallback } from "/assets/ios-ime-input.mjs";
+import { createTerminalShortcuts } from "/assets/terminal-shortcuts.mjs";
 
 // xterm measures cell width when it opens; wait for the bundled font first.
 await document.fonts.load('12.5px "JetBrains Mono"').catch(() => {});
@@ -78,6 +79,7 @@ const fitAddon = new FitAddon();
 terminal.loadAddon(fitAddon);
 terminal.open(terminalElement);
 const terminalTextarea = terminalElement.querySelector(".xterm-helper-textarea");
+const shortcutFeedback = document.querySelector("#shortcut-feedback");
 
 let socket;
 let attachmentID = "";
@@ -493,6 +495,18 @@ function sendInput(data) {
   });
 }
 
+const terminalShortcuts = createTerminalShortcuts({
+  attached: () => Boolean(attachmentID),
+  returnToLive: () => send("terminal.focus", { attachment_id: attachmentID }),
+  sendInput,
+  paste: (value) => terminal.paste(value),
+  readClipboard: navigator.clipboard?.readText?.bind(navigator.clipboard),
+  message: (value) => {
+    shortcutFeedback.textContent = value;
+    shortcutFeedback.hidden = !value;
+  },
+});
+
 function tmuxMouseWheelSequence(direction, clientX, clientY) {
   const bounds = terminalElement.getBoundingClientRect();
   const relativeX = Math.max(0, Math.min(bounds.width - 1, clientX - bounds.left));
@@ -845,6 +859,10 @@ document.querySelector("#reconnect").addEventListener("click", () => {
 newSessionButton.addEventListener("click", () => createSession());
 newSessionTab.addEventListener("click", () => createSession());
 newSessionNav.addEventListener("click", () => createSession());
+document.querySelectorAll("[data-terminal-key]").forEach((button) => {
+  button.addEventListener("click", () => terminalShortcuts.key(button.dataset.terminalKey));
+});
+document.querySelector("#paste-clipboard").addEventListener("click", () => terminalShortcuts.paste());
 pathForm.addEventListener("submit", (event) => {
   event.preventDefault();
   loadDirectory(pathInput.value);
