@@ -25,6 +25,12 @@ test("Esc and Ctrl+C send terminal control bytes without submitting Enter", () =
   assert.deepEqual(sent, ["focus", "\x1b", "focus", "\x03"]);
 });
 
+test("F3 sends the xterm function key sequence for native conversation search", () => {
+  const { shortcuts, sent } = fixture();
+  shortcuts.key("f3");
+  assert.deepEqual(sent, ["focus", "\x1bOR"]);
+});
+
 test("Paste reads the clipboard and uses terminal paste semantics without Enter", async () => {
   const { shortcuts, sent, pasted } = fixture();
   await shortcuts.paste();

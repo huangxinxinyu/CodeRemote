@@ -10,7 +10,7 @@ export function createTerminalShortcuts({ attached, returnToLive, sendInput, pas
 
   return {
     key(name) {
-      const data = { escape: "\x1b", interrupt: "\x03" }[name];
+      const data = { escape: "\x1b", interrupt: "\x03", f3: "\x1bOR" }[name];
       if (!data || !ready()) return;
       returnToLive();
       if (sendInput(data)) message("");

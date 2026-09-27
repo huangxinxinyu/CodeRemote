@@ -16,7 +16,7 @@
 | 同目录可开多个独立终端 | 允许切换，不要求协调文件冲突 |
 | 账号业务暂缓 | 不设计统一模型服务或 provider 登录流程 |
 | 移动端控制台保留单一原生终端输入 | 用户真机确认 Codex 上方原生输入栏已支持指令，要求移除下方重复 composer；保留工作目录、状态与终端入口 |
-| 底部只保留 Esc、粘贴、Ctrl+C 三个快捷按钮 | 用户 2026-09-26 反馈手机长按粘贴和控制键不便，明确要求这三个入口；原生 TUI 仍是唯一输入栏 |
+| 底部提供 Esc、粘贴、Ctrl+C 和查找 F3 快捷按钮 | 用户 2026-09-26 先要求前三个入口，随后反馈手机无法按 Codex 提示的 F3；原生 TUI 仍是唯一输入栏 |
 | 恢复 agent 原生 ANSI 样式 | 浏览器 xterm 支持颜色与字重；新 agent 进程不继承宿主启动环境中的 `NO_COLOR`，但不改用户配置或 provider 环境目录 |
 | 手机可以新建和切换对话 | “新对话”严格映射为新的 `terminal_id`、tmux session 和 agent 原生 session；旧终端继续运行，不增加产品聊天数据库 |
 | 移动端顶部直接切换多个对话 | 用户 2026-09-24 明确要求顶部多个 tab，且终端可以属于不同工作目录；标签复用现有全量终端列表，显示原生标题和目录名，选中后重新附着对应 `terminal_id` |
@@ -84,11 +84,15 @@ Codex 模型切换和 slash command 同样是原生 TUI integration：页面可�
 
 2026-09-25 用户反馈：iPhone 中文输入法下无法输入 `/`、空格等符号。资料核实：[xterm.js #5835](https://github.com/xtermjs/xterm.js/issues/5835) 在 iOS 中文输入法记录了相同的空格/标点漏发，按键初期只有 `keyCode=229`，最终字符到 `input/keyup` 才可见；[待合并修复 #5836](https://github.com/xtermjs/xterm.js/pull/5836) 也采用 keyup 补发方向。工程处理是在浏览器端限定 iOS、单字符空格/标点和 xterm 未发数据的条件下补发，不更换原生 TUI 或终端协议。事件序列单测及 Go 构建已通过。初次构建后问题仍在，实际监听 `127.0.0.1:8080` 的 launchd 进程仍是旧版，返回的 `app.js` 缺少补丁且新模块为 404；用 `launchctl kickstart -k gui/501/dev.coderemote.manual` 重启后，新模块返回 200，6 个 tmux session 均保留。用户随后在 iPhone Safari 重新打开页面并确认 `/`、空格输入正常。
 
-2026-09-26 用户明确提出手机底部加入 Esc、粘贴、Ctrl+C，取代此前“不常驻控制键条”的建议。工程实现只加入这三个按钮，不扩展为完整软键盘；它们走现有终端字节通道，Ctrl+C 是 ETX，不做产品层任务取消。粘贴使用 xterm.js 当前 paste 模式，不自动回车；剪贴板权限或非 HTTPS 导致读取失败时仅显示提示，不发送空输入。HTTPS 真机剪贴板体验尚未验证。
+2026-09-26 用户明确提出手机底部加入 Esc、粘贴、Ctrl+C，取代此前“不常驻控制键条”的建议。先加入这三个按钮，随后按手机无法按 F3 的反馈补充查找键，仍不扩展为完整软键盘；它们走现有终端字节通道，Ctrl+C 是 ETX，不做产品层任务取消。粘贴使用 xterm.js 当前 paste 模式，不自动回车；剪贴板权限或非 HTTPS 导致读取失败时仅显示提示，不发送空输入。HTTPS 真机剪贴板体验尚未验证。
+
+同日用户指出手机无法使用论文对话中 Codex 提示的 F3。工程在现有按钮条增加“查找 F3”，发送 `xterm-256color` 的 F3 序列 `ESC O R`，由 Codex 处理搜索；没有引入产品级对话索引。按键字节测试通过，手机端实际触发待验证。
 
 2026-09-26 用户反馈首次点击原生输入栏后看不到 Codex 已输入内容，必须键入字符才触发画面上移。工程诊断指出旧布局判定只比较两个可能同步缩小的 Safari 视口值；iPhone 聚焦时立即采用紧凑布局，并监听两种 resize 更新可见高度。Node 回归覆盖首次聚焦、键盘缩小以及失焦还原；真机尚待复验。
 
-同日用户反馈 AI infra 的论文对话无法向上滑看输出。该 pane 实测 `alternate_on=1`、`mouse_any_flag=1`、`history_size=0`，旧 tmux WheelUpPane 绑定只能进入空的 copy mode。将鼠标感知的 TUI 走 tmux `send-keys -M`，其余 pane 保留 copy mode；隔离 tmux 绑定语法及 Go 测试通过，Codex 原生滚动仍需真机复验。另一次 launchd 重启后 API 仅列出 prototype，但 tmux 中其余 session 均存活；无 locale 环境重现 tmux 将 tab 输出成 `_`，因此 catalog 改用 `|` 格式并保留字段内竖线。新版 daemon 重启后 API 列出全部 9 个 session，当前全局 WheelUpPane 绑定也已更新。
+用户之后在 iPhone 复验：新版 Codex 对话已经能上下滑动，但首次聚焦输入栏仍未上移。进一步发现聚焦时卡片仍继承 `flex-shrink: 0`，可见高度缩小时无法收缩；工程调整为 `flex: 1 1 0`。这次修正的真机结果尚待复验。
+
+同日用户反馈 AI infra 的论文对话无法向上滑看输出。该 pane 实测 `alternate_on=1`、`mouse_any_flag=1`、`history_size=0`，旧 tmux WheelUpPane 绑定只能进入空的 copy mode。将鼠标感知的 TUI 走 tmux `send-keys -M`，其余 pane 保留 copy mode；隔离 tmux 绑定语法及 Go 测试通过，用户随后确认论文对话已可滑动。另一次 launchd 重启后 API 仅列出 prototype，但 tmux 中其余 session 均存活；无 locale 环境重现 tmux 将 tab 输出成 `_`，因此 catalog 改用 `|` 格式并保留字段内竖线。新版 daemon 重启后 API 列出全部 9 个 session，当前全局 WheelUpPane 绑定也已更新。
 
 “后台一直跑”落实为 Mac 持续执行。iPhone 锁屏后连接可以断开，回到页面时重新附着；不依赖 Safari 在后台常驻。
 

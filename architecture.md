@@ -64,13 +64,17 @@ iOS 中文输入法可能在 `keydown` 只报告 `keyCode=229`，空格和标点
 
 2026-09-26 用户要求在手机底部增加 Esc、粘贴和 Ctrl+C，以减少长按原生输入栏的操作。快捷键直接经现有 `terminal.input` 发送 ESC/ETX 字节；粘贴由浏览器读取纯文本后交给 xterm.js 的 `paste()`，沿现有 `onData` 路径发送，遵循终端当前的 bracketed-paste 模式且不追加回车。发送前沿用 `terminal.focus` 返回 tmux 实时画面，不弹出新的输入框。剪贴板读取依赖 Safari 的安全上下文和授权；直接 tailnet HTTP 页面无法承诺一键读取，页面会说明需要私有 HTTPS，原生长按粘贴仍可用。单次粘贴限 40 KiB UTF-8，以免 base64 后超过服务端 64 KiB WebSocket 帧上限。用户已确认手机端快捷按钮可工作；HTTPS 剪贴板授权边界和更多键盘布局仍待验收。
 
+同日用户反馈手机无法按 Codex 在论文对话中提示的 F3。底部增加“查找 F3”，通过原有 `terminal.input` 发送 xterm F3 序列 `ESC O R`，让 Codex 自行处理原生对话搜索；不读取或索引终端正文。`xterm-256color` 的 `kf3` 与该序列一致，Node 行为测试通过；真实 iPhone 点击后的 Codex 搜索仍待验收。
+
 PTY 附着 tmux 时显式使用全局 `-u` 选项输出 UTF-8。2026-09-24 在无 `LANG/LC_*` 的 launchd daemon 中复现：不带此选项时，tmux 内部保存的中文正确，但附着客户端收到等宽下划线；带 `-u` 后客户端收到原始中文 UTF-8。此修复只影响附着输出编码，不修改 agent 环境或原生会话。
 
 网页预组装的 Codex 原生快捷指令使用终端 bracketed-paste 起止序列包住指令正文，再在需要提交时追加回车。依据 2026-09-21 的真实链路复现，直接把 `/model\r` 作为同一批普通字节写入只会把文字留在 Codex 输入框；显式 paste 结束边界后 Codex 才能区分正文与提交键。浏览器终端内直接键入的字节仍原样转发。
 
 tmux copy mode 的定位光标与 Codex 输入光标是两种位置。浏览器在终端失焦时隐藏前者；轻点原生输入结束后，daemon 精确检查该终端的 `#{pane_in_mode}`，仅在回滚中用 `send-keys -X cancel` 返回实时画面，然后让按键继续进入 agent。触摸滑动不会触发这个返回动作。2026-09-26 用户反馈首次聚焦后需输入字符才能看到 Codex 输入栏：旧判断只比较 `visualViewport.height` 与同时缩小的 `innerHeight`，可能一直不进入紧凑布局。iPhone 上聚焦原生输入栏时立即启用紧凑布局，视口和窗口 resize 再用当前可见高度调整终端；真实键盘动画仍待复验。
 
-2026-09-26 调查 AI infra 的 Codex 论文会话：新版 Codex pane 的 `alternate_on=1`、`mouse_any_flag=1`、`history_size=0`，旧 `WheelUpPane` 固定进入 tmux copy mode 后没有旧行可滚。tmux 现在只在 pane 请求鼠标事件时用 `send-keys -M` 把滚轮交给原生 TUI；不请求鼠标事件的旧 pane 仍进 tmux copy mode。隔离 tmux 已验证绑定语法，真实 iPhone 的论文会话滚动仍待复验。
+用户随后复验确认论文会话的滑动已正常，但首次聚焦仍看不到输入栏。继续检查发现移动端 `.terminal-card` 原设为 `flex: 1 0 340px`，聚焦样式只改了 flex basis，收缩系数仍为 0；键盘压缩可用高度后卡片仍可能溢出可见区域。聚焦样式现明确设为可收缩的 `flex: 1 1 0`，保留视口高度更新；真实 Safari 结果待再次复验。
+
+2026-09-26 调查 AI infra 的 Codex 论文会话：新版 Codex pane 的 `alternate_on=1`、`mouse_any_flag=1`、`history_size=0`，旧 `WheelUpPane` 固定进入 tmux copy mode 后没有旧行可滚。tmux 现在只在 pane 请求鼠标事件时用 `send-keys -M` 把滚轮交给原生 TUI；不请求鼠标事件的旧 pane 仍进 tmux copy mode。隔离 tmux 已验证绑定语法，用户随后确认真实 iPhone 上的论文会话可以上下滑动。
 
 终端输出可能包含代码和凭据。Daemon 不记录输入输出正文；Tailscale 控制面不等于应用服务器，不应把 tailnet 身份 token 或 provider 凭据写入仓库。详见[通信协议](docs/protocol.md)。
 

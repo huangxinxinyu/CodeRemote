@@ -37,7 +37,7 @@
 | 定位目录 | 能找到含空格、中文的目录并在其中启动；不存在目录不被自动创建 |
 | 切换目录 | 从现有终端切到另一 cwd 后新终端使用目标路径，旧终端继续运行；daemon 重启后两者路径仍正确 |
 | 输入与显示 | 中文输入法连续输入中文、空格、`/` 与常见中英文标点，均只出现一次；英文、多行粘贴、退格、Enter、Tab、Esc、方向键与 Ctrl 有效。分别检查中文输入法组词时用空格选字，以及选字后插入真正空格 |
-| 底部快捷按钮 | 键盘显示和隐藏时 Esc、粘贴、Ctrl+C 都能点击；Esc 退出原生菜单，Ctrl+C 发送中断，粘贴多行纯文本但不自动提交；HTTPS 页面检查 Safari 剪贴板授权，直接 HTTP 页面检查不可读取时的提示 |
+| 底部快捷按钮 | 键盘显示和隐藏时 Esc、粘贴、Ctrl+C、查找 F3 都能点击；Esc 退出原生菜单，Ctrl+C 发送中断，F3 打开 Codex 原生对话搜索，粘贴多行纯文本但不自动提交；HTTPS 页面检查 Safari 剪贴板授权，直接 HTTP 页面检查不可读取时的提示 |
 | 首次聚焦原生输入 | 不键入字符，点一次 Codex 输入栏并等键盘弹起后就能看到已有输入及光标；收起键盘后布局还原 |
 | 原生交互 | agent 自己的确认提示、执行输出和菜单正常显示；不自动批准 |
 | 手机布局 | 键盘显示/隐藏、横竖屏和视口变化后画面继续可用，无持续错位 |
@@ -111,8 +111,10 @@
 ### 2026-09-26 首次聚焦、论文对话滚动与重启恢复
 
 - 首次聚焦测试先失败后通过，覆盖 iPhone 未输入字符前的紧凑布局及键盘导致 `visualViewport.height`、`innerHeight` 同时缩小的情形。真实 Safari 键盘动画仍待验收。
-- AI infra 论文会话 `session-027b9754bb59` 的 tmux 状态为 alternate screen、鼠标事件打开、history 0；旧 wheel 绑定只会进入空的 copy mode。新条件绑定的 Go 测试先失败后通过，隔离 tmux 命令解析通过；真实 Codex 原生滚动待验收。
-- 真实 launchd 重启后 API 一度只列出 prototype，而 tmux session 均仍存活。无 locale 的启动环境下，tmux 将 `-F` 中的制表符输出成 `_`；用可保留路径/标题内竖线的分隔格式修复，Go 回归先失败后通过。新版 daemon 再次重启后 `/api/v1/terminals` 列出全部 9 个 session；专用 tmux 的 WheelUpPane 绑定已更新。真实 iPhone 的首次聚焦和论文滚动仍待用户复验。
+- AI infra 论文会话 `session-027b9754bb59` 的 tmux 状态为 alternate screen、鼠标事件打开、history 0；旧 wheel 绑定只会进入空的 copy mode。新条件绑定的 Go 测试先失败后通过，隔离 tmux 命令解析通过；用户随后确认真实 iPhone 上该对话可以滑动。
+- 真实 launchd 重启后 API 一度只列出 prototype，而 tmux session 均仍存活。无 locale 的启动环境下，tmux 将 `-F` 中的制表符输出成 `_`；用可保留路径/标题内竖线的分隔格式修复，Go 回归先失败后通过。新版 daemon 再次重启后 `/api/v1/terminals` 列出全部 9 个 session；专用 tmux 的 WheelUpPane 绑定已更新。论文滚动已获用户确认，首次聚焦继续修复。
+- 用户随后指出手机无法按 Codex 论文对话提示的 F3。`infocmp xterm-256color` 给出 `kf3=\EOR`；按键测试先失败后通过，底部“查找 F3”按钮发送相同序列。真实 iPhone 上能否打开 Codex 搜索仍待复验。
+- 用户真机反馈：论文对话现在可以滑动查看输出，首次点入输入栏仍不随键盘上移。检查移动端 CSS 后发现原卡片 `flex: 1 0 340px` 的收缩系数 0 被聚焦样式继承，聚焦后的有限可用高度不能缩小卡片；样式改为 `flex: 1 1 0`。静态回归检查先失败后通过，真实 Safari 效果待复验。Mac headless Chrome 在本环境启动超时，未作为视觉验收证据。
 
 ## 原型失败时的处理
 

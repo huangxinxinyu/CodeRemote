@@ -524,7 +524,7 @@ body[data-connection="exited"] .terminal-led {
 
 .terminal-shortcuts {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   flex: 0 0 auto;
   padding: 7px 0 2px;
@@ -1482,7 +1482,7 @@ body.keyboard-open .conversation-shell {
 
 body.keyboard-open .terminal-card {
   min-height: 0;
-  flex-basis: auto;
+  flex: 1 1 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
