@@ -70,9 +70,9 @@ PTY 附着 tmux 时显式使用全局 `-u` 选项输出 UTF-8。2026-09-24 在�
 
 网页预组装的 Codex 原生快捷指令使用终端 bracketed-paste 起止序列包住指令正文，再在需要提交时追加回车。依据 2026-09-21 的真实链路复现，直接把 `/model\r` 作为同一批普通字节写入只会把文字留在 Codex 输入框；显式 paste 结束边界后 Codex 才能区分正文与提交键。浏览器终端内直接键入的字节仍原样转发。
 
-tmux copy mode 的定位光标与 Codex 输入光标是两种位置。浏览器在终端失焦时隐藏前者；轻点原生输入结束后，daemon 精确检查该终端的 `#{pane_in_mode}`，仅在回滚中用 `send-keys -X cancel` 返回实时画面，然后让按键继续进入 agent。触摸滑动不会触发这个返回动作。2026-09-26 用户反馈首次聚焦后需输入字符才能看到 Codex 输入栏：旧判断只比较 `visualViewport.height` 与同时缩小的 `innerHeight`，可能一直不进入紧凑布局。iPhone 上聚焦原生输入栏时立即启用紧凑布局，视口和窗口 resize 再用当前可见高度调整终端；真实键盘动画仍待复验。
+tmux copy mode 的定位光标与 Codex 输入光标是两种位置。浏览器在终端失焦时隐藏前者；轻点原生输入结束后，daemon 精确检查该终端的 `#{pane_in_mode}`，仅在回滚中用 `send-keys -X cancel` 返回实时画面，然后让按键继续进入 agent。触摸滑动不会触发这个返回动作。2026-09-26 用户反馈首次聚焦后需输入字符才能看到 Codex 输入栏：旧判断只比较 `visualViewport.height` 与同时缩小的 `innerHeight`，可能一直不进入紧凑布局。iPhone 上聚焦原生输入栏时立即启用紧凑布局，视口和窗口 resize 再用当前可见高度调整终端；这一步的真机复验仍失败，随后继续修正卡片收缩。
 
-用户随后复验确认论文会话的滑动已正常，但首次聚焦仍看不到输入栏。继续检查发现移动端 `.terminal-card` 原设为 `flex: 1 0 340px`，聚焦样式只改了 flex basis，收缩系数仍为 0；键盘压缩可用高度后卡片仍可能溢出可见区域。聚焦样式现明确设为可收缩的 `flex: 1 1 0`，保留视口高度更新；真实 Safari 结果待再次复验。
+用户随后复验确认论文会话的滑动已正常，但首次聚焦仍看不到输入栏。继续检查发现移动端 `.terminal-card` 原设为 `flex: 1 0 340px`，聚焦样式只改了 flex basis，收缩系数仍为 0；键盘压缩可用高度后卡片仍可能溢出可见区域。聚焦样式现明确设为可收缩的 `flex: 1 1 0`，保留视口高度更新；用户在真实 iPhone Safari 再次复验后确认问题已修好。
 
 2026-09-26 调查 AI infra 的 Codex 论文会话：新版 Codex pane 的 `alternate_on=1`、`mouse_any_flag=1`、`history_size=0`，旧 `WheelUpPane` 固定进入 tmux copy mode 后没有旧行可滚。tmux 现在只在 pane 请求鼠标事件时用 `send-keys -M` 把滚轮交给原生 TUI；不请求鼠标事件的旧 pane 仍进 tmux copy mode。隔离 tmux 已验证绑定语法，用户随后确认真实 iPhone 上的论文会话可以上下滑动。
 

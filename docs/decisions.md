@@ -88,9 +88,9 @@ Codex 模型切换和 slash command 同样是原生 TUI integration：页面可�
 
 同日用户说手机无法使用“那个键”；AI infra 论文对话当时显示 Codex 的 F3 提示，因此工程暂按 F3 理解，在按钮条增加“查找 F3”。按钮发送 `xterm-256color` 的 F3 序列 `ESC O R`，由 Codex 处理搜索；没有引入产品级对话索引。用户尚未明确确认所指按键，按键字节测试已通过，手机端实际触发待验证。
 
-2026-09-26 用户反馈首次点击原生输入栏后看不到 Codex 已输入内容，必须键入字符才触发画面上移。工程诊断指出旧布局判定只比较两个可能同步缩小的 Safari 视口值；iPhone 聚焦时立即采用紧凑布局，并监听两种 resize 更新可见高度。Node 回归覆盖首次聚焦、键盘缩小以及失焦还原；真机尚待复验。
+2026-09-26 用户反馈首次点击原生输入栏后看不到 Codex 已输入内容，必须键入字符才触发画面上移。工程诊断指出旧布局判定只比较两个可能同步缩小的 Safari 视口值；iPhone 聚焦时立即采用紧凑布局，并监听两种 resize 更新可见高度。Node 回归覆盖首次聚焦、键盘缩小以及失焦还原；这一步的真机复验仍失败，随后继续修正卡片收缩。
 
-用户之后在 iPhone 复验：新版 Codex 对话已经能上下滑动，但首次聚焦输入栏仍未上移。进一步发现聚焦时卡片仍继承 `flex-shrink: 0`，可见高度缩小时无法收缩；工程调整为 `flex: 1 1 0`。这次修正的真机结果尚待复验。
+用户之后在 iPhone 复验：新版 Codex 对话已经能上下滑动，但首次聚焦输入栏仍未上移。进一步发现聚焦时卡片仍继承 `flex-shrink: 0`，可见高度缩小时无法收缩；工程调整为 `flex: 1 1 0`。用户再次在真实 iPhone Safari 确认问题已修好。
 
 同日用户反馈 AI infra 的论文对话无法向上滑看输出。该 pane 实测 `alternate_on=1`、`mouse_any_flag=1`、`history_size=0`，旧 tmux WheelUpPane 绑定只能进入空的 copy mode。将鼠标感知的 TUI 走 tmux `send-keys -M`，其余 pane 保留 copy mode；隔离 tmux 绑定语法及 Go 测试通过，用户随后确认论文对话已可滑动。另一次 launchd 重启后 API 仅列出 prototype，但 tmux 中其余 session 均存活；无 locale 环境重现 tmux 将 tab 输出成 `_`，因此 catalog 改用 `|` 格式并保留字段内竖线。新版 daemon 重启后 API 列出全部 9 个 session，当前全局 WheelUpPane 绑定也已更新。
 
