@@ -15,12 +15,12 @@ iPhone Safari → Tailscale 私网 → Mac 上的 Code Remote → tmux → Codex
 - 从 iPhone Safari 打开 Mac 上的私有 Web 页面。
 - 在指定目录启动 Codex 或 Claude Code，并显示其原生 TUI。
 - 从手机直接使用 agent 原生输入栏输入任务、查看输出和响应 agent 自己的确认提示。
-- 在手机顶部标签中直接切换多个独立终端，包括不同工作目录的对话；可新建和明确结束终端，切走后其他 agent 继续运行。
+- 在手机顶部标签中直接切换多个独立终端，包括不同工作目录的对话；可新建和明确结束终端，切走后其他 agent 继续运行。顶部标签和底部终端工具可分别收起，把更多屏幕留给原生 TUI。
 - 在手机上手输或逐层浏览工作目录，并在所选目录启动新的独立终端；当前终端不会被改 cwd 或结束。
 - Codex 模式下列出当前目录的已保存对话，显示 Codex 自己的名称与预览，并可用原生 `codex resume` 恢复到新的独立终端。
 - 从模型面板打开 Codex 原生 `/model` 选择器，也可打开原生 `/` 菜单或快捷触发 `/status`、`/permissions`、`/review`。
 - 在 iPhone 的原生 TUI 区域单指上下滑动，由当前 agent TUI 或 tmux 查看有限的终端历史。
-- 在终端下方点 Esc、粘贴、Ctrl+C 或“查找 F3”；F3 可触发当前 Codex 对话的原生搜索。粘贴从 Safari 剪贴板读取纯文本，不自动按 Enter。剪贴板一键读取需要私有 HTTPS 页面和 Safari 授权。
+- 在终端下方点 Esc、粘贴、图片、Ctrl+C 或“查找 F3”；F3 可触发当前 Codex 对话的原生搜索。粘贴从 Safari 剪贴板读取纯文本，不自动按 Enter。Codex 支持选择图片上传并把临时文件路径放入原生输入栏；剪贴板一键读取需要私有 HTTPS 页面和 Safari 授权。
 - Safari 锁屏、关闭页面或临时断网后，Mac 上的 tmux 和 agent 不会因为网页断开而自动结束。
 - Go daemon 重启后从产品专用 tmux server 恢复终端列表。
 - 支持直接通过 Tailscale 地址访问，也可通过 Tailscale Serve 测试私有 HTTPS。

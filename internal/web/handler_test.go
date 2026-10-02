@@ -29,7 +29,7 @@ func TestHandlerServesEmbeddedTerminalProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(body)
-	for _, required := range []string{`id="terminal"`, `id="connection-status"`, `/assets/app.js`, `/assets/xterm.css`} {
+	for _, required := range []string{`id="terminal"`, `id="session-state-label"`, `/assets/app.js`, `/assets/xterm.css`} {
 		if !strings.Contains(page, required) {
 			t.Errorf("GET / body does not contain %q", required)
 		}
@@ -43,7 +43,7 @@ func TestHandlerServesOnlyKnownRoutes(t *testing.T) {
 	t.Parallel()
 
 	handler := NewHandler(nil)
-	for _, path := range []string{"/assets/app.js", "/assets/xterm.mjs", "/assets/addon-fit.mjs", "/assets/xterm.css"} {
+	for _, path := range []string{"/assets/app.js", "/assets/chrome-panels.mjs", "/assets/touch-scroll.mjs", "/assets/xterm.mjs", "/assets/addon-fit.mjs", "/assets/xterm.css"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
@@ -69,12 +69,10 @@ func TestEmbeddedTerminalUsesMobileInstrumentShell(t *testing.T) {
 	page := response.Body.String()
 
 	for _, required := range []string{
-		`class="brand-mark"`,
-		`class="connection-chip"`,
-		`id="project-context"`,
-		`id="project-selector"`,
-		`id="path-selector"`,
-		`id="model-selector"`,
+		`id="top-chrome"`,
+		`id="toggle-top-chrome"`,
+		`id="bottom-chrome"`,
+		`id="toggle-bottom-chrome"`,
 		`id="conversation-shell"`,
 		`class="terminal-card"`,
 		`id="terminal-size"`,
@@ -83,6 +81,87 @@ func TestEmbeddedTerminalUsesMobileInstrumentShell(t *testing.T) {
 	} {
 		if !strings.Contains(page, required) {
 			t.Errorf("mobile terminal shell does not contain %q", required)
+		}
+	}
+	for _, removed := range []string{
+		`class="topbar"`,
+		`class="brand-mark"`,
+		`id="connection-status"`,
+		`id="project-context"`,
+		`id="project-selector"`,
+		`id="path-selector"`,
+		`id="model-selector"`,
+	} {
+		if strings.Contains(page, removed) {
+			t.Errorf("mobile terminal shell still contains removed top branding %q", removed)
+		}
+	}
+}
+
+func TestMobileWorkspaceGivesNativeTerminalTheFullContentArea(t *testing.T) {
+	t.Parallel()
+
+	handler := NewHandler(nil)
+	request := httptest.NewRequest(http.MethodGet, "/assets/app.css", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	style := response.Body.String()
+
+	for _, required := range []string{
+		`--chrome-toggle-accent: #ffffff;`,
+		`filter: drop-shadow(0 0 4px #ffffffa6);`,
+		`border-right: 9px solid transparent;`,
+		`border-left: 9px solid transparent;`,
+		`border-bottom: 9px solid var(--chrome-toggle-accent);`,
+		`border-top: 9px solid var(--chrome-toggle-accent);`,
+		`.chrome-panel-top {
+  grid-template-rows: auto;
+  border-bottom: 0;
+}`,
+		`.chrome-panel-bottom {
+  grid-template-rows: auto;
+  border-top: 0;
+}`,
+		`.chrome-toggle {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  width: 44px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  transform: translateX(-50%);`,
+		`.chrome-toggle-top {
+  bottom: -18px;
+}`,
+		`.chrome-toggle-bottom {
+  top: -18px;
+}`,
+		`.session-heading,
+  .terminal-card-header {
+    display: none;
+  }`,
+		`.conversation-shell {
+    display: flex;
+    flex-direction: column;
+    padding: 0;`,
+		`.terminal-card {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: 0;
+    background: #282c34;
+    border: 0;
+    border-radius: 0;`,
+		`.terminal-stage {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+    padding: 0;`,
+	} {
+		if !strings.Contains(style, required) {
+			t.Errorf("mobile full-area terminal CSS does not contain %q", required)
 		}
 	}
 }
@@ -225,7 +304,7 @@ func TestMobileSessionListCanEndTerminalWithoutDeletingNativeHistory(t *testing.
 	handler.ServeHTTP(pageResponse, pageRequest)
 	page := pageResponse.Body.String()
 	for _, required := range []string{
-		`“结束”只关闭所选终端，不会删除 Codex 原生历史`,
+		`“结束”会先确认，再关闭所选终端，不会删除 Codex 原生历史`,
 	} {
 		if !strings.Contains(page, required) {
 			t.Errorf("mobile session guidance does not contain %q", required)

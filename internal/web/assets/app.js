@@ -1,14 +1,17 @@
 import { Terminal } from "/assets/xterm.mjs";
 import { FitAddon } from "/assets/addon-fit.mjs";
+import { createChromePanelState } from "/assets/chrome-panels.mjs";
 import { createIOSIMEPunctuationFallback } from "/assets/ios-ime-input.mjs";
+import {
+  createPixelWheelAccumulator,
+  momentumLaunchVelocity,
+} from "/assets/touch-scroll.mjs";
 import { createTerminalShortcuts } from "/assets/terminal-shortcuts.mjs";
 import { terminalViewportLayout } from "/assets/terminal-layout.mjs";
 
 // xterm measures cell width when it opens; wait for the bundled font first.
 await document.fonts.load('12.5px "JetBrains Mono"').catch(() => {});
 
-const status = document.querySelector("#connection-status");
-const statusLabel = document.querySelector("#connection-label");
 const sessionStateLabel = document.querySelector("#session-state-label");
 const terminalElement = document.querySelector("#terminal");
 const terminalSize = document.querySelector("#terminal-size");
@@ -27,6 +30,8 @@ const historyList = document.querySelector("#history-list");
 const historyCount = document.querySelector("#history-count");
 const newSessionButton = document.querySelector("#new-session");
 const newSessionNav = document.querySelector("#new-session-nav");
+const imageUploadButton = document.querySelector("#upload-image");
+const imageFileInput = document.querySelector("#image-file");
 const pathForm = document.querySelector("#path-form");
 const pathInput = document.querySelector("#path-input");
 const pathError = document.querySelector("#path-error");
@@ -34,6 +39,17 @@ const directoryList = document.querySelector("#directory-list");
 const switchPathButton = document.querySelector("#switch-path");
 const openModelPickerButton = document.querySelector("#open-model-picker");
 const openSlashMenuButton = document.querySelector("#open-slash-menu");
+const chromePanelElements = {
+  top: {
+    root: document.querySelector("#top-chrome"),
+    button: document.querySelector("#toggle-top-chrome"),
+  },
+  bottom: {
+    root: document.querySelector("#bottom-chrome"),
+    button: document.querySelector("#toggle-bottom-chrome"),
+  },
+};
+const chromePanels = createChromePanelState({ storage: window.localStorage });
 
 const runtimeContext = {
   agent_id: "codex",
@@ -95,7 +111,28 @@ let creatingSession = false;
 let resumingThreadID = "";
 let deletingTerminalID = "";
 let sessionListError = "";
-const terminalTouch = { active: false, moved: false, pendingFocus: false, lastY: 0, remainder: 0 };
+const terminalTouch = {
+  active: false, moved: false, pendingFocus: false, lastY: 0, lastTime: 0,
+  clientX: 0, clientY: 0, velocity: 0, dragPixels: 0, frame: 0, attachment: "",
+};
+
+// tmux mouse input is discrete, so these values convert touch pixels into
+// deliberately sparse wheel steps. Keep them together for real-device tuning.
+const touchScrollTuning = Object.freeze({
+  dragActivationPixels: 6,
+  pixelsPerWheelStep: 32,
+  maxStepsPerSample: 1,
+  maxVelocity: 1.5,
+  momentumVelocityScale: 0.28,
+  momentumStartVelocity: 0.32,
+  momentumStopVelocity: 0.08,
+  momentumDecayMs: 100,
+});
+const touchWheel = createPixelWheelAccumulator({
+  pixelsPerStep: touchScrollTuning.pixelsPerWheelStep,
+  maxStepsPerSample: touchScrollTuning.maxStepsPerSample,
+});
+const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const sheetLabels = {
   path: ["WORKING DIRECTORY", "切换项目 / 路径"],
@@ -155,10 +192,6 @@ function sessionDisplayName(context) {
 function updateRuntimeContext() {
   const agentName = titleCase(runtimeContext.agent_id);
   const compactDirectory = compactPath(runtimeContext.working_directory || "目录不可用");
-  document.querySelector("#project-name").textContent = runtimeContext.workspace_name || "当前目录";
-  document.querySelector("#working-directory").textContent = compactDirectory;
-  document.querySelector("#working-directory").title = runtimeContext.working_directory;
-  document.querySelector("#agent-name").textContent = runtimeContext.agent_id.toUpperCase();
   document.querySelector("#terminal-agent-name").textContent = agentName;
   activeSessionName.textContent = runtimeContext.terminal_id ? sessionDisplayName(runtimeContext) : "暂无终端";
   document.querySelectorAll("[data-current-project]").forEach((element) => {
@@ -177,6 +210,7 @@ function updateRuntimeContext() {
   document.querySelectorAll("[data-codex-command]").forEach((element) => {
     element.disabled = runtimeContext.agent_id !== "codex";
   });
+  imageUploadButton.disabled = runtimeContext.agent_id !== "codex";
 }
 
 async function loadRuntimeContext() {
@@ -187,7 +221,7 @@ async function loadRuntimeContext() {
     activeTerminalID = runtimeContext.terminal_id;
     updateRuntimeContext();
   } catch {
-    document.querySelector("#working-directory").textContent = "上下文读取失败";
+    setStatus("上下文读取失败", "error");
   }
 }
 
@@ -259,6 +293,8 @@ function renderConversationTabs() {
 
   for (const context of terminalContexts) {
     const name = sessionDisplayName(context);
+    const tab = document.createElement("div");
+    tab.className = "conversation-tab-shell";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "conversation-tab";
@@ -274,7 +310,21 @@ function renderConversationTabs() {
       button.classList.add("is-current");
     }
     button.addEventListener("click", () => switchTerminal(context.terminal_id));
-    conversationTabList.append(button);
+
+    const endButton = document.createElement("button");
+    endButton.type = "button";
+    endButton.className = "conversation-tab-end";
+    endButton.textContent = deletingTerminalID === context.terminal_id ? "…" : "×";
+    endButton.disabled = Boolean(deletingTerminalID);
+    endButton.setAttribute("aria-label", `结束 ${name}`);
+    endButton.title = `结束 ${name}`;
+    endButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      endTerminal(context.terminal_id);
+    });
+
+    tab.append(button, endButton);
+    conversationTabList.append(tab);
   }
   conversationTabList.querySelector(".is-current")?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
@@ -452,8 +502,6 @@ async function loadDirectory(path) {
 }
 
 function setStatus(text, state) {
-  statusLabel.textContent = text;
-  status.dataset.state = state;
   document.body.dataset.connection = state;
   statusNetwork.textContent = text;
 
@@ -467,6 +515,23 @@ function setStatus(text, state) {
   const [sessionLabel, attachmentLabel] = labels[state] || labels.error;
   sessionStateLabel.textContent = sessionLabel;
   statusAttachment.textContent = attachmentLabel;
+}
+
+function renderChromePanel(panel, resize = true) {
+  const collapsed = chromePanels.isCollapsed(panel);
+  const { root, button } = chromePanelElements[panel];
+  const position = panel === "top" ? "顶部" : "底部";
+  const label = `${collapsed ? "展开" : "收起"}${position}工具`;
+  root.classList.toggle("is-collapsed", collapsed);
+  button.setAttribute("aria-expanded", String(!collapsed));
+  button.setAttribute("aria-label", label);
+  button.querySelector(".visually-hidden").textContent = label;
+  if (resize) window.setTimeout(fitAndResize, 190);
+}
+
+function toggleChromePanel(panel) {
+  chromePanels.toggle(panel);
+  renderChromePanel(panel);
 }
 
 function bytesToBase64(bytes) {
@@ -519,9 +584,46 @@ function tmuxMouseWheelSequence(direction, clientX, clientY) {
 }
 
 function installTerminalTouchScrolling() {
-  const pixelsPerStep = 22;
+  function sendWheelPixels(pixels) {
+    const { direction, steps } = touchWheel.add(pixels);
+    if (steps === 0) return false;
+    const sequence = tmuxMouseWheelSequence(direction, terminalTouch.clientX, terminalTouch.clientY);
+    if (!sendInput(sequence.repeat(steps))) return false;
+    return true;
+  }
+
+  function stopMomentum() {
+    if (terminalTouch.frame) cancelAnimationFrame(terminalTouch.frame);
+    terminalTouch.frame = 0;
+  }
+
+  function startMomentum() {
+    terminalTouch.velocity = momentumLaunchVelocity(terminalTouch.velocity, {
+      scale: touchScrollTuning.momentumVelocityScale,
+      minimum: touchScrollTuning.momentumStartVelocity,
+    }, reducedMotionQuery.matches);
+    if (terminalTouch.velocity === 0) return;
+    let lastFrame = performance.now();
+    const tick = (now) => {
+      if (terminalTouch.active || !attachmentID || attachmentID !== terminalTouch.attachment) {
+        terminalTouch.frame = 0;
+        return;
+      }
+      const elapsed = Math.min(32, now - lastFrame);
+      lastFrame = now;
+      terminalTouch.velocity *= Math.exp(-elapsed / touchScrollTuning.momentumDecayMs);
+      sendWheelPixels(terminalTouch.velocity * elapsed);
+      if (Math.abs(terminalTouch.velocity) >= touchScrollTuning.momentumStopVelocity) {
+        terminalTouch.frame = requestAnimationFrame(tick);
+      } else {
+        terminalTouch.frame = 0;
+      }
+    };
+    terminalTouch.frame = requestAnimationFrame(tick);
+  }
 
   terminalElement.addEventListener("touchstart", (event) => {
+    stopMomentum();
     if (event.touches.length !== 1) {
       terminalTouch.active = false;
       return;
@@ -530,36 +632,56 @@ function installTerminalTouchScrolling() {
     terminalTouch.moved = false;
     terminalTouch.pendingFocus = false;
     terminalTouch.lastY = event.touches[0].clientY;
-    terminalTouch.remainder = 0;
+    terminalTouch.lastTime = performance.now();
+    terminalTouch.clientX = event.touches[0].clientX;
+    terminalTouch.clientY = event.touches[0].clientY;
+    terminalTouch.velocity = 0;
+    terminalTouch.dragPixels = 0;
+    touchWheel.reset();
+    terminalTouch.attachment = attachmentID;
   }, { capture: true, passive: true });
 
   terminalElement.addEventListener("touchmove", (event) => {
-    if (!terminalTouch.active || event.touches.length !== 1 || !attachmentID) return;
+    if (!terminalTouch.active || event.touches.length !== 1 || !attachmentID || attachmentID !== terminalTouch.attachment) return;
     const touch = event.touches[0];
-    terminalTouch.remainder += terminalTouch.lastY - touch.clientY;
+    const now = performance.now();
+    const delta = terminalTouch.lastY - touch.clientY;
+    const elapsed = now - terminalTouch.lastTime;
     terminalTouch.lastY = touch.clientY;
-    const steps = Math.min(6, Math.floor(Math.abs(terminalTouch.remainder) / pixelsPerStep));
-    if (steps === 0) return;
+    terminalTouch.lastTime = now;
+    terminalTouch.clientX = touch.clientX;
+    terminalTouch.clientY = touch.clientY;
+    if (elapsed > 0) {
+      const speed = Math.max(-touchScrollTuning.maxVelocity, Math.min(touchScrollTuning.maxVelocity, delta / elapsed));
+      terminalTouch.velocity = elapsed < 80 ? terminalTouch.velocity * 0.4 + speed * 0.6 : 0;
+    }
+    terminalTouch.dragPixels += delta;
+    if (Math.abs(terminalTouch.dragPixels) < touchScrollTuning.dragActivationPixels && !terminalTouch.moved) {
+      return;
+    }
 
     event.preventDefault();
     event.stopPropagation();
     terminalTouch.moved = true;
     terminalTouch.pendingFocus = false;
     terminal.blur();
-    const direction = terminalTouch.remainder > 0 ? 1 : -1;
-    const sequence = tmuxMouseWheelSequence(direction, touch.clientX, touch.clientY);
-    for (let index = 0; index < steps; index += 1) sendInput(sequence);
-    terminalTouch.remainder -= direction * steps * pixelsPerStep;
+    sendWheelPixels(terminalTouch.dragPixels);
+    terminalTouch.dragPixels = 0;
   }, { capture: true, passive: false });
 
   const endGesture = (event) => {
     if (event.type === "touchend" && terminalTouch.pendingFocus && !terminalTouch.moved && attachmentID) {
       send("terminal.focus", { attachment_id: attachmentID });
     }
+    if (event.type === "touchend" && terminalTouch.moved && attachmentID === terminalTouch.attachment
+      && performance.now() - terminalTouch.lastTime < 80) {
+      startMomentum();
+    }
     terminalTouch.active = false;
     terminalTouch.moved = false;
     terminalTouch.pendingFocus = false;
-    terminalTouch.remainder = 0;
+    terminalTouch.dragPixels = 0;
+    if (!terminalTouch.frame) touchWheel.reset();
   };
   terminalElement.addEventListener("touchend", endGesture, { capture: true, passive: true });
   terminalElement.addEventListener("touchcancel", endGesture, { capture: true, passive: true });
@@ -763,17 +885,15 @@ function setCreatingSession(value) {
   updatePathSwitchAction(pathInput.value);
 }
 
-async function createSession(workingDirectory = "") {
+async function createSession(workingDirectory = runtimeContext.working_directory) {
   if (creatingSession) return;
   setCreatingSession(true);
   showPathError();
   try {
     const headers = { Accept: "application/json" };
     const options = { method: "POST", headers };
-    if (workingDirectory) {
-      headers["Content-Type"] = "application/json";
-      options.body = JSON.stringify({ working_directory: workingDirectory });
-    }
+    headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify({ working_directory: workingDirectory });
     const response = await fetch("/api/v1/terminals", {
       ...options,
     });
@@ -827,6 +947,44 @@ async function resumeHistoryThread(threadID) {
   }
 }
 
+async function uploadImage(file) {
+  if (!file || !attachmentID || runtimeContext.agent_id !== "codex") return;
+  if (file.size > 10 * 1024 * 1024) {
+    shortcutFeedback.textContent = "图片不能超过 10 MB";
+    shortcutFeedback.hidden = false;
+    return;
+  }
+  const terminalID = activeTerminalID;
+  const currentAttachment = attachmentID;
+  imageUploadButton.disabled = true;
+  shortcutFeedback.textContent = "正在上传图片…";
+  shortcutFeedback.hidden = false;
+  try {
+    const form = new FormData();
+    form.append("image", file, file.name || "image");
+    const response = await fetch(`/api/v1/terminals/${encodeURIComponent(terminalID)}/images`, {
+      method: "POST",
+      body: form,
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`image upload returned ${response.status}`);
+    const result = await response.json();
+    if (activeTerminalID !== terminalID || attachmentID !== currentAttachment) {
+      shortcutFeedback.textContent = "图片已上传；请切回原对话后重新上传";
+      return;
+    }
+    send("terminal.focus", { attachment_id: attachmentID });
+    terminal.paste(result.path);
+    shortcutFeedback.textContent = "图片路径已粘贴，请在 Codex 输入栏确认后发送";
+  } catch {
+    shortcutFeedback.textContent = "图片上传失败，请检查连接后重试";
+  } finally {
+    imageUploadButton.disabled = false;
+    imageFileInput.value = "";
+    shortcutFeedback.hidden = false;
+  }
+}
+
 // iOS Chinese keyboards can deliver punctuation only in the textarea input event.
 // xterm 6 can miss it when the matching keydown has keyCode 229.
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
@@ -848,6 +1006,11 @@ new ResizeObserver(() => {
   resizeTimer = window.setTimeout(fitAndResize, 80);
 }).observe(terminalElement);
 
+for (const panel of ["top", "bottom"]) {
+  renderChromePanel(panel, false);
+  chromePanelElements[panel].button.addEventListener("click", () => toggleChromePanel(panel));
+}
+
 document.querySelectorAll("[data-sheet]").forEach((button) => {
   button.addEventListener("click", () => openSheet(button.dataset.sheet));
 });
@@ -864,6 +1027,15 @@ document.querySelectorAll("[data-terminal-key]").forEach((button) => {
   button.addEventListener("click", () => terminalShortcuts.key(button.dataset.terminalKey));
 });
 document.querySelector("#paste-clipboard").addEventListener("click", () => terminalShortcuts.paste());
+imageUploadButton.addEventListener("click", () => {
+  if (runtimeContext.agent_id !== "codex") {
+    shortcutFeedback.textContent = "图片上传目前仅支持 Codex 对话";
+    shortcutFeedback.hidden = false;
+    return;
+  }
+  imageFileInput.click();
+});
+imageFileInput.addEventListener("change", () => uploadImage(imageFileInput.files?.[0]));
 pathForm.addEventListener("submit", (event) => {
   event.preventDefault();
   loadDirectory(pathInput.value);

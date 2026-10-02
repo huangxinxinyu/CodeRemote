@@ -42,6 +42,7 @@ iPhone Safari 只通过 Tailscale tailnet 访问 Mac daemon。首版没有公网
 | Codex 历史 | `GET /api/v1/codex/threads?working_directory=...` | Codex 模式已实现；返回当前终端 cwd 的原生 `name`、`preview` 与时间，不读取 provider 文件 |
 | 恢复 Codex 对话 | `POST /api/v1/codex/threads/{id}/resume` | Codex 模式已实现；请求提交当前 cwd，重新核对原生历史 ID 后在该目录的新 tmux 终端运行 `codex resume` |
 | 关闭终端 | `DELETE /api/v1/terminals/{id}` | 已实现；同源且经 UI 确认后结束 catalog 中的指定 tmux session，不删除 agent 原生历史；重复删除返回成功 |
+| 上传图片 | `POST /api/v1/terminals/{id}/images` | Codex 图片上传；同源 multipart `image` 字段，PNG/JPEG/GIF/WebP，最大 10 MB；返回 daemon 临时文件路径供原生 TUI 接收 |
 | 附着终端 | `WS /api/v1/terminals/{id}/attach` | 已实现；附着已知终端，尺寸在首条消息内发送，不依赖查询参数 |
 
 创建与修改请求使用 JSON，必须限制 body 大小并拒绝未知控制字段。启动命令由 daemon 的 agent 描述表决定，远程 API 不接受任意 shell 命令字符串。
@@ -51,6 +52,8 @@ iPhone Safari 只通过 Tailscale tailnet 访问 Mac daemon。首版没有公网
 浏览器预组装的 Codex slash command 在 `terminal.input` 数据中使用 bracketed-paste 起止序列包住指令正文，提交型指令在结束边界后追加 `CR`；只打开 `/` 菜单时不追加。这样保留终端字节协议，同时避免 Codex 把同批正文与回车识别成未提交的粘贴内容。旧版独立 composer 已移除；原生终端直接键入保持原字节路径。Daemon 不解析或识别这些指令。
 
 底部 Esc、Ctrl+C、F3 快捷按钮分别发送 `ESC`、`ETX`、xterm F3 序列 `ESC O R`；粘贴按钮读取浏览器剪贴板纯文本并通过 xterm.js 当前 paste 模式送入同一 `terminal.input`，不自动追加 `CR`。四者先发 `terminal.focus` 以便从 tmux copy mode 返回实时画面。粘贴不可用或终端未连接时不发送输入；没有新增服务端命令类型。
+
+图片上传走同源 HTTP，不扩展 WebSocket 帧或终端输入协议。服务端验证终端 ID、Origin、multipart body 上限、文件大小与检测到的图片类型，临时路径仅返回给发起上传的页面。前端只在原附着仍为当前终端时将路径 bracketed-paste 到 Codex TUI，不自动追加回车；结束终端时清除其上传文件，daemon 重启后遗留文件最多 24 小时清理。
 
 ## WebSocket 消息
 

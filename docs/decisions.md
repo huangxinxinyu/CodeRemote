@@ -17,9 +17,12 @@
 | 账号业务暂缓 | 不设计统一模型服务或 provider 登录流程 |
 | 移动端控制台保留单一原生终端输入 | 用户真机确认 Codex 上方原生输入栏已支持指令，要求移除下方重复 composer；保留工作目录、状态与终端入口 |
 | 底部提供 Esc、粘贴和 Ctrl+C 快捷按钮 | 用户 2026-09-26 明确要求这三个入口；原生 TUI 仍是唯一输入栏 |
+| 手机上可上传图片到 Codex 原生对话 | 用户 2026-09-30 要求图片输入；浏览器上传后由 daemon 在系统临时目录保存限时图片文件，再把路径粘贴至 Codex 原生 TUI，不增加产品消息存储，也不自动提交。当前仅承诺 Codex，Claude 路径输入未经验证 |
 | 恢复 agent 原生 ANSI 样式 | 浏览器 xterm 支持颜色与字重；新 agent 进程不继承宿主启动环境中的 `NO_COLOR`，但不改用户配置或 provider 环境目录 |
 | 手机可以新建和切换对话 | “新对话”严格映射为新的 `terminal_id`、tmux session 和 agent 原生 session；旧终端继续运行，不增加产品聊天数据库 |
+| 普通“新建对话”继承当前页面终端的工作目录 | 用户 2026-09-30 指出不能每次回到 Code Remote 默认路径；顶部、对话面板和导航的新建入口均以当前页面选中的终端 cwd 创建。只有路径面板显式切换目录时才使用新选择的路径 |
 | 移动端顶部直接切换多个对话 | 用户 2026-09-24 明确要求顶部多个 tab，且终端可以属于不同工作目录；标签复用现有全量终端列表，显示原生标题和目录名，选中后重新附着对应 `terminal_id` |
+| 手机主界面只把上下工具留在 TUI 外 | 用户 2026-10-01 要求把更多屏幕留给原生工作区；删除品牌、Project/Path/Agent、Active Session 与终端卡片标题，手机 TUI 全幅铺开。顶部只保留对话 tabs，底部保留终端快捷键与导航，两侧工具独立展开/收起并记住浏览器本地偏好；折叠入口视觉上只留浮动三角形，透明热区不显示外框或单独占行。路径与状态仍从底部入口进入，agent/model 信息以原生 TUI 为准 |
 | 手机可以清理终端并恢复电脑上的原生 session | “结束”只终止所选产品受控 tmux/agent 现场，不等同于离开页面，也不删除 Codex 原生历史；历史继续通过官方 `thread/list` 查找，并以 `codex resume` 在新终端恢复 |
 | 会话列表优先显示 agent 原生标题 | 读取 agent 主动写入的 tmux pane title；不解析终端正文，不读取 provider 私有会话文件，空标题仍回退为本地编号 |
 | 手机能选择过去的 Codex 对话 | 通过官方 app-server `thread/list` 获取 Codex 原生名称和 ID，选择后以 `codex resume <id>` 启动新终端；不创建聊天数据库 |
@@ -93,6 +96,8 @@ Codex 模型切换和 slash command 同样是原生 TUI integration：页面可�
 用户之后在 iPhone 复验：新版 Codex 对话已经能上下滑动，但首次聚焦输入栏仍未上移。进一步发现聚焦时卡片仍继承 `flex-shrink: 0`，可见高度缩小时无法收缩；工程调整为 `flex: 1 1 0`。用户再次在真实 iPhone Safari 确认问题已修好。
 
 同日用户反馈 AI infra 的论文对话无法向上滑看输出。该 pane 实测 `alternate_on=1`、`mouse_any_flag=1`、`history_size=0`，旧 tmux WheelUpPane 绑定只能进入空的 copy mode。将鼠标感知的 TUI 走 tmux `send-keys -M`，其余 pane 保留 copy mode；隔离 tmux 绑定语法及 Go 测试通过，用户随后确认论文对话已可滑动。另一次 launchd 重启后 API 仅列出 prototype，但 tmux 中其余 session 均存活；无 locale 环境重现 tmux 将 tab 输出成 `_`，因此 catalog 改用 `|` 格式并保留字段内竖线。新版 daemon 重启后 API 列出全部 9 个 session，当前全局 WheelUpPane 绑定也已更新。
+
+2026-10-01 用户确认“能滑动”之后继续反馈手感偏卡且每个动作移动过多。工程判断根因是触摸像素被过早转换成离散 tmux 滚轮刻度，并在单次采样中批量发送。当前改为可配置的像素累积：默认累计 32 px 才产生一个刻度，每次采样最多发送一个；惯性速度按比例降低并更快衰减，`prefers-reduced-motion` 下关闭惯性。该数值是工程初始调校，不冒充真机最终值；Node 测试覆盖累积、限速、可调阈值、重置及减少动态效果，iPhone Safari 手感待用户复验。
 
 “后台一直跑”落实为 Mac 持续执行。iPhone 锁屏后连接可以断开，回到页面时重新附着；不依赖 Safari 在后台常驻。
 

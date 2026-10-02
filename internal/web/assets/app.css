@@ -32,9 +32,11 @@
   --green: #3dd6b3;
   --green-soft: #123b36;
   --yellow: #efb86b;
+  --chrome-toggle-accent: #ffffff;
   --red: #ff727f;
   --purple: #9b86ff;
   --mono: "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   background: var(--canvas-deep);
 }
 
@@ -77,18 +79,130 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-rows:
-    calc(66px + env(safe-area-inset-top))
-    58px
-    74px
-    minmax(0, 1fr)
-    calc(58px + env(safe-area-inset-bottom));
+  grid-template-rows: auto minmax(0, 1fr) auto;
   width: 100%;
   height: 100dvh;
   min-height: 100%;
   margin: 0 auto;
   overflow: hidden;
   background: linear-gradient(180deg, #081321 0%, #07101b 54%, #060d17 100%);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
+
+.chrome-panel {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  background: #08121e;
+}
+
+.chrome-panel-top {
+  grid-template-rows: auto;
+  border-bottom: 0;
+}
+
+.chrome-panel-bottom {
+  grid-template-rows: auto;
+  border-top: 0;
+}
+
+.chrome-panel-fold {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  transition: grid-template-rows 180ms var(--ease-in-out);
+}
+
+.chrome-panel.is-collapsed .chrome-panel-fold {
+  grid-template-rows: minmax(0, 0fr);
+}
+
+.chrome-panel-content {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 120ms ease;
+}
+
+.chrome-panel.is-collapsed .chrome-panel-content {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.top-chrome-content {
+  display: grid;
+}
+
+.bottom-chrome-content {
+  display: grid;
+  grid-template-rows: auto auto;
+}
+
+.chrome-toggle {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  width: 44px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  transform: translateX(-50%);
+}
+
+.chrome-toggle::before {
+  position: absolute;
+  content: "";
+  inset: -12px -6px;
+}
+
+.chrome-toggle-top {
+  bottom: -18px;
+}
+
+.chrome-toggle-bottom {
+  top: -18px;
+}
+
+.chrome-toggle:active {
+  opacity: 0.8;
+}
+
+.chrome-toggle-triangle {
+  display: block;
+  width: 0;
+  height: 0;
+  margin: auto;
+  border-right: 9px solid transparent;
+  border-left: 9px solid transparent;
+  filter: drop-shadow(0 0 4px #ffffffa6);
+}
+
+.chrome-panel-top:not(.is-collapsed) .chrome-toggle-triangle,
+.chrome-panel-bottom.is-collapsed .chrome-toggle-triangle {
+  border-bottom: 9px solid var(--chrome-toggle-accent);
+}
+
+.chrome-panel-top.is-collapsed .chrome-toggle-triangle,
+.chrome-panel-bottom:not(.is-collapsed) .chrome-toggle-triangle {
+  border-top: 9px solid var(--chrome-toggle-accent);
 }
 
 .topbar {
@@ -187,9 +301,10 @@ button {
 .conversation-tabs {
   display: flex;
   min-width: 0;
+  min-height: calc(58px + env(safe-area-inset-top));
   align-items: center;
   gap: 8px;
-  padding: 4px max(12px, env(safe-area-inset-right)) 4px max(12px, env(safe-area-inset-left));
+  padding: calc(4px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 4px max(12px, env(safe-area-inset-left));
   border-bottom: 1px solid var(--line);
 }
 
@@ -209,6 +324,13 @@ button {
   display: none;
 }
 
+.conversation-tab-shell {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+}
+
 .conversation-tab {
   display: grid;
   flex: 0 0 auto;
@@ -218,7 +340,7 @@ button {
   max-width: min(46vw, 220px);
   min-height: 42px;
   overflow: hidden;
-  padding: 4px 12px;
+  padding: 4px 29px 4px 12px;
   color: var(--text-soft);
   font-size: 11px;
   font-weight: 650;
@@ -226,6 +348,33 @@ button {
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: 9px;
+}
+
+.conversation-tab-end {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  place-items: center;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  transform: translateY(-50%);
+}
+
+.conversation-tab-end:active:not(:disabled) {
+  color: var(--red);
+  background: #65313c55;
+}
+
+.conversation-tab-end:disabled {
+  opacity: 0.55;
 }
 
 .conversation-tab span,
@@ -524,10 +673,10 @@ body[data-connection="exited"] .terminal-led {
 
 .terminal-shortcuts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
   flex: 0 0 auto;
-  padding: 7px 0 2px;
+  padding: 7px max(10px, env(safe-area-inset-right)) 2px max(10px, env(safe-area-inset-left));
 }
 
 .terminal-shortcuts button {
@@ -1206,12 +1355,7 @@ textarea:focus-visible {
   }
 
   .app-shell {
-    grid-template-rows:
-      calc(50px + env(safe-area-inset-top))
-      46px
-      56px
-      minmax(0, 1fr)
-      calc(50px + env(safe-area-inset-bottom));
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
 
   .topbar {
@@ -1256,6 +1400,8 @@ textarea:focus-visible {
 
   .conversation-tabs {
     gap: 6px;
+    min-height: calc(46px + env(safe-area-inset-top));
+    padding-top: calc(4px + env(safe-area-inset-top));
     padding-right: max(8px, env(safe-area-inset-right));
     padding-left: max(8px, env(safe-area-inset-left));
     border-bottom-color: #414852;
@@ -1267,6 +1413,11 @@ textarea:focus-visible {
     background: #282c34;
     border-color: #454c58;
     border-radius: 6px;
+  }
+
+  .conversation-tab-end {
+    right: 3px;
+    color: #969da9;
   }
 
   .conversation-tab.is-current {
@@ -1317,13 +1468,12 @@ textarea:focus-visible {
   .conversation-shell {
     display: flex;
     flex-direction: column;
-    padding: 4px max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left));
+    padding: 0;
   }
 
-  .session-heading {
-    flex: 0 0 auto;
-    min-height: 28px;
-    padding-bottom: 4px;
+  .session-heading,
+  .terminal-card-header {
+    display: none;
   }
 
   .session-state {
@@ -1340,12 +1490,12 @@ textarea:focus-visible {
 
   .terminal-card {
     display: flex;
-    flex: 1 0 340px;
+    flex: 1 1 0;
     flex-direction: column;
-    min-height: 340px;
+    min-height: 0;
     background: #282c34;
-    border-color: #4b525e;
-    border-radius: 8px;
+    border: 0;
+    border-radius: 0;
     box-shadow: none;
   }
 
@@ -1390,7 +1540,7 @@ textarea:focus-visible {
     flex: 1 1 auto;
     height: auto;
     min-height: 0;
-    padding: 4px;
+    padding: 0;
     background: #282c34;
   }
 
@@ -1413,6 +1563,11 @@ textarea:focus-visible {
     padding: 4px max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
     background: #1b1e25;
     border-top-color: #414852;
+  }
+
+  .terminal-shortcuts {
+    padding-right: max(8px, env(safe-area-inset-right));
+    padding-left: max(8px, env(safe-area-inset-left));
   }
 
   .action-bar button {
@@ -1459,21 +1614,15 @@ textarea:focus-visible {
 body.keyboard-open .app-shell {
   height: var(--visible-viewport-height, 100dvh);
   min-height: 0;
-  grid-template-rows: 0 calc(50px + env(safe-area-inset-top)) 0 minmax(100px, 1fr) 0;
+  grid-template-rows: auto minmax(100px, 1fr) auto;
 }
 
 body.keyboard-open .conversation-tabs {
   padding-top: calc(4px + env(safe-area-inset-top));
 }
 
-body.keyboard-open .topbar,
-body.keyboard-open .context-bar,
 body.keyboard-open .action-bar {
-  visibility: hidden;
-  min-height: 0;
-  padding: 0;
-  margin: 0;
-  overflow: hidden;
+  display: none;
 }
 
 body.keyboard-open .conversation-shell {

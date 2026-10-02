@@ -86,6 +86,7 @@ func newHandler(attach http.Handler, catalog SessionCatalog, history CodexHistor
 		}
 	})
 	if catalog != nil {
+		uploads := newImageUploads()
 		mux.HandleFunc("/api/v1/directories", func(response http.ResponseWriter, request *http.Request) {
 			if request.Method != http.MethodGet {
 				response.WriteHeader(http.StatusMethodNotAllowed)
@@ -216,6 +217,44 @@ func newHandler(attach http.Handler, catalog SessionCatalog, history CodexHistor
 			suffix := strings.TrimPrefix(request.URL.Path, "/api/v1/terminals/")
 			parts := strings.Split(suffix, "/")
 			switch request.Method {
+			case http.MethodPost:
+				if !SameOrigin(request) {
+					http.Error(response, "request origin is not allowed", http.StatusForbidden)
+					return
+				}
+				if len(parts) != 2 || parts[0] == "" || parts[1] != "images" {
+					http.NotFound(response, request)
+					return
+				}
+				if runtimeContext.AgentID != "codex" {
+					http.Error(response, "image upload is available for Codex terminals only", http.StatusNotImplemented)
+					return
+				}
+				if _, ok := catalog.Get(parts[0]); !ok {
+					http.NotFound(response, request)
+					return
+				}
+				request.Body = http.MaxBytesReader(response, request.Body, maxImageUploadBytes+(1<<20))
+				if err := request.ParseMultipartForm(1 << 20); err != nil {
+					if request.MultipartForm != nil {
+						_ = request.MultipartForm.RemoveAll()
+					}
+					http.Error(response, "invalid image upload", http.StatusBadRequest)
+					return
+				}
+				defer request.MultipartForm.RemoveAll()
+				file, _, err := request.FormFile("image")
+				if err != nil {
+					http.Error(response, "image file is required", http.StatusBadRequest)
+					return
+				}
+				defer file.Close()
+				path, err := uploads.save(parts[0], file)
+				if err != nil {
+					http.Error(response, "unsupported image or upload too large", http.StatusBadRequest)
+					return
+				}
+				writeJSONResponse(response, http.StatusCreated, map[string]string{"path": path})
 			case http.MethodDelete:
 				if !SameOrigin(request) {
 					http.Error(response, "request origin is not allowed", http.StatusForbidden)
@@ -229,6 +268,7 @@ func newHandler(attach http.Handler, catalog SessionCatalog, history CodexHistor
 					http.Error(response, "end terminal session", http.StatusInternalServerError)
 					return
 				}
+				uploads.removeTerminal(parts[0])
 				response.WriteHeader(http.StatusNoContent)
 			case http.MethodGet:
 				if len(parts) != 2 || parts[0] == "" || parts[1] != "attach" {
