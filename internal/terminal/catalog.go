@@ -170,7 +170,9 @@ func (catalog *Catalog) List() []Info {
 }
 
 func (catalog *Catalog) refreshTitles(ctx context.Context) {
-	args := []string{"-L", catalog.config.SocketName, "-f", "/dev/null", "list-panes", "-a", "-F", "#{session_name}|#{pane_title}"}
+	// launchd may start the daemon without a UTF-8 locale; force UTF-8 on the
+	// tmux client or non-ASCII pane titles are replaced with underscores.
+	args := []string{"-u", "-L", catalog.config.SocketName, "-f", "/dev/null", "list-panes", "-a", "-F", "#{session_name}|#{pane_title}"}
 	output, err := catalog.runner.Output(ctx, catalog.config.TmuxPath, args...)
 	if err != nil {
 		return
