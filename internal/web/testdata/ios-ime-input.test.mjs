@@ -26,10 +26,14 @@ test("does not duplicate input already delivered by xterm", () => {
   assert.deepEqual(sent, ["/"]);
 });
 
-test("leaves normal keys and Chinese composition to xterm", () => {
+test("falls back for ordinary key codes only when xterm misses the committed text", () => {
   const { sent, input } = capture();
   input.keydown({ keyCode: 32, isComposing: false });
   input.input({ inputType: "insertText", data: " ", isComposing: false });
+  input.data(" ");
+  input.keyup();
+  input.keydown({ keyCode: 49, isComposing: false });
+  input.input({ inputType: "insertText", data: "1", isComposing: false });
   input.keyup();
   input.keydown({ keyCode: 229, isComposing: false });
   input.compositionstart();
@@ -37,5 +41,5 @@ test("leaves normal keys and Chinese composition to xterm", () => {
   input.compositionend();
   input.keyup();
   input.data("中");
-  assert.deepEqual(sent, ["中"]);
+  assert.deepEqual(sent, [" ", "1", "中"]);
 });

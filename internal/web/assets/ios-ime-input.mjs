@@ -3,12 +3,15 @@ export function createIOSIMEPunctuationFallback(send) {
 
   return {
     keydown(event) {
-      pending = event.keyCode === 229 && !event.isComposing ? { text: "", delivered: false } : undefined;
+      // Numeric keyboards may report ordinary key codes instead of 229, even when
+      // xterm misses the committed text. Track every non-composition keydown and
+      // let onData suppress the fallback when xterm handled it normally.
+      pending = !event.isComposing ? { text: "", delivered: false } : undefined;
     },
     input(event) {
       if (!pending || event.isComposing || event.inputType !== "insertText") return;
-      // iOS Chinese keyboards can commit these without an xterm onData event.
-      if (event.data === " " || /^\p{P}$/u.test(event.data || "")) pending.text = event.data;
+      // iOS keyboards can commit digits, punctuation, and spaces without an xterm onData event.
+      if (event.data === " " || /^[0-9]$/.test(event.data || "") || /^\p{P}$/u.test(event.data || "")) pending.text = event.data;
     },
     keyup() {
       if (pending?.text && !pending.delivered) send(pending.text);
